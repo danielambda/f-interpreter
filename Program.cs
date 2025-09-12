@@ -12,9 +12,5 @@ var example = """
   sum) ; 10
 """;
 
-var lexer = new Lexer(example);
-Token? token = lexer.NextToken();
-while(token?.Type is not null) {
-  token = lexer.NextToken();
+foreach (var token in Lexer.Lex(example))
   Console.WriteLine(token);
-}

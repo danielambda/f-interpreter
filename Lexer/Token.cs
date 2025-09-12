@@ -5,6 +5,7 @@ public enum TokenType
   LParen,
   RParen,
   Quote,
+  QuoteOp,
   Identifier,
   Integer,
   Real,

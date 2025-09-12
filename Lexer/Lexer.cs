@@ -1,10 +1,23 @@
+using LanguageExt;
+
 namespace FCompiler.Lexer;
 
-public class Lexer {
+public record struct LexerError(string message);
+
+public struct Lexer {
+  public static IEnumerable<Either<LexerError, Token>> Lex(string input) {
+    var lexer = new Lexer(input);
+    var mToken = lexer.NextToken();
+    while(mToken is { } token) {
+      yield return token;
+      mToken = lexer.NextToken();
+    }
+  }
+
   private readonly string _input;
   private int _position;
 
-  public Lexer(string input) {
+  private Lexer(string input) {
     _input = input;
     _position = 0;
   }
@@ -31,7 +44,7 @@ public class Lexer {
     }
   }
 
-  public Token? NextToken() {
+  private Either<LexerError, Token>? NextToken() {
     SkipWhitespaceAndComments();
 
     if (Current == '\0')
@@ -49,7 +62,7 @@ public class Lexer {
 
     if (Current == '\'') {
       Advance();
-      return new Token(TokenType.Quote);
+      return new Token(TokenType.QuoteOp);
     }
 
     if (char.IsLetter(Current)) {
@@ -84,9 +97,6 @@ public class Lexer {
         Advance();
       }
 
-      if (!char.IsDigit(Current))
-        throw new LexerException("Expected digit after sign");
-
       while (char.IsDigit(Current)) {
         num += Current;
         Advance();
@@ -99,7 +109,7 @@ public class Lexer {
         Advance();
 
         if (!char.IsDigit(Current))
-          throw new LexerException("Expected digit after '.'");
+          return new LexerError("Expected digit after '.'");
 
         while (char.IsDigit(Current)) {
           num += Current;
@@ -110,17 +120,13 @@ public class Lexer {
       return hasDot switch {
         true => double.TryParse(num, out double realValue)
           ? new Token(TokenType.Real, realValue)
-          : throw new LexerException($"Invalid real number: {num}"),
+          : new LexerError($"Invalid real number: {num}"),
         false => int.TryParse(num, out int intValue)
           ? new Token(TokenType.Integer, intValue)
-          : throw new LexerException($"Invalid integer number: {num}")
+          : new LexerError($"Invalid integer number: {num}")
       };
     }
 
-    throw new LexerException($"Unexpected character: {Current}");
+    return new LexerError($"Unexpected character: {Current}");
   }
-}
-
-public class LexerException : Exception {
-  public LexerException(string message) : base(message) { }
 }
