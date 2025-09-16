@@ -1,4 +1,5 @@
 using LanguageExt;
+using System.Text;
 
 namespace FCompiler.Lexer;
 
@@ -66,11 +67,12 @@ public struct Lexer {
     }
 
     if (char.IsLetter(Current)) {
-      var id = "";
+      var idBuilder = new StringBuilder();
       while (char.IsLetter(Current) || char.IsDigit(Current)) {
-        id += Current;
-        Advance();
+          idBuilder.Append(Current);
+          Advance();
       }
+      string id = idBuilder.ToString();
 
       return id switch {
         "true"   => new Token(TokenType.Boolean, true),
@@ -89,43 +91,47 @@ public struct Lexer {
       };
     }
 
-    if (char.IsDigit(Current) ||
-        ((Current == '+' || Current == '-') && char.IsDigit(Peek))) {
-      var num = "";
+
+  if (char.IsDigit(Current) ||
+      ((Current == '+' || Current == '-') && char.IsDigit(Peek))) {
+      
+      var numBuilder = new StringBuilder();
+      
       if (Current == '+' || Current == '-') {
-        num += Current;
-        Advance();
+          numBuilder.Append(Current);
+          Advance();
       }
 
       while (char.IsDigit(Current)) {
-        num += Current;
-        Advance();
+          numBuilder.Append(Current);
+          Advance();
       }
 
       var hasDot = false;
       if (Current == '.') {
-        hasDot = true;
-        num += Current;
-        Advance();
-
-        if (!char.IsDigit(Current))
-          return new LexerError("Expected digit after '.'");
-
-        while (char.IsDigit(Current)) {
-          num += Current;
+          hasDot = true;
+          numBuilder.Append(Current);
           Advance();
-        }
+
+          if (!char.IsDigit(Current))
+              return new LexerError("Expected digit after '.'");
+
+          while (char.IsDigit(Current)) {
+              numBuilder.Append(Current);
+              Advance();
+          }
       }
 
+      string numStr = numBuilder.ToString();
       return hasDot switch {
-        true => double.TryParse(num, out double realValue)
-          ? new Token(TokenType.Real, realValue)
-          : new LexerError($"Invalid real number: {num}"),
-        false => int.TryParse(num, out int intValue)
-          ? new Token(TokenType.Integer, intValue)
-          : new LexerError($"Invalid integer number: {num}")
+          true => double.TryParse(numStr, out double realValue)
+              ? new Token(TokenType.Real, realValue)
+              : new LexerError($"Invalid real number: {numStr}"),
+          false => int.TryParse(numStr, out int intValue)
+              ? new Token(TokenType.Integer, intValue)
+              : new LexerError($"Invalid integer number: {numStr}")
       };
-    }
+  }
 
     return new LexerError($"Unexpected character: {Current}");
   }
