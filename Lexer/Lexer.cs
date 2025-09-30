@@ -4,7 +4,7 @@ using System.Text;
 
 namespace FCompiler.Lexer;
 
-public record struct LexerError(string message);
+public record struct LexerError(string message, Span span);
 
 public class Lexer {
     public static IEnumerable<Either<LexerError, Token>> Lex(IEnumerable<string> lines) {
@@ -85,7 +85,7 @@ public class Lexer {
                 continue;
             }
 
-            yield return new LexerError($"Unexpected character: {Current}");
+            yield return new LexerError($"Unexpected character: {Current}", _span);
             yield break;
         }
     }
@@ -134,7 +134,7 @@ public class Lexer {
             Advance();
 
             if (!char.IsDigit(Current)) {
-                return new LexerError("Expected digit after '.'");
+                return new LexerError("Expected digit after '.'", _span);
             }
 
             while (char.IsDigit(Current)) {
@@ -148,13 +148,13 @@ public class Lexer {
             if (double.TryParse(numStr, out double realValue))
                 return new Real(realValue, _span);
             else
-                return new LexerError($"Invalid real number: {numStr}");
+                return new LexerError($"Invalid real number: {numStr}", _span);
         }
         else {
             if (int.TryParse(numStr, out int intValue))
                 return new Integer(intValue, _span);
             else
-                return new LexerError($"Invalid integer number: {numStr}");
+                return new LexerError($"Invalid integer number: {numStr}", _span);
         }
     }
 }
