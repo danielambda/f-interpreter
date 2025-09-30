@@ -1,6 +1,6 @@
 ﻿using FCompiler.Lexer;
 using FCompiler.Parser;
-using static LanguageExt.Prelude;
+using LanguageExt;
 
 var example = """
 (prog (i sum)
@@ -16,6 +16,9 @@ var example = """
 
 var tokens = Lexer.Lex(example.Split('\n')).Sequence();
 tokens.Match(
-  Left: Console.WriteLine,
-  Right: ts => Console.WriteLine(new Parser(ts.ToArray()).ParseProgram())
+  Left: a => Console.WriteLine(a),
+  Right: ts => (new Parser(ts.ToArray()).ParseProgram()).Match (
+    Left: a => Console.WriteLine(a),
+    Right: ast => ast.PrettyPrint()
+  )
 );
