@@ -12,14 +12,6 @@ var example = """
   sum) ; 10
 """;
 
-var lexer = new Lexer();
-var lines = example.Split('\n');
-
-foreach (var line in lines)
-{
-    lexer.SetInput(line);
-    foreach (var token in lexer.Tokens())
-    {
-        Console.WriteLine(token);
-    }
+foreach (var token in Lexer.Lex(example.Split('\n'))) {
+    Console.WriteLine(token);
 }
