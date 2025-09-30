@@ -1,6 +1,6 @@
-namespace FCompiler.Lexer;
+using FCompiler.Utils;
 
-public record struct Span(int lineNumber, int begin, int end);
+namespace FCompiler.Lexer;
 
 public abstract record Token(Span span);
 public record Identifier(string value, Span span)   : Token(span);
