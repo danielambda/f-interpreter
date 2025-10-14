@@ -7,15 +7,17 @@ namespace FCompiler.Parser;
 public record ParserError(string message, Span span);
 
 public record Ast(List<Element> elements) {
-    public void PrettyPrint() {
-        elements.Select(ElementExtensions.PrettyPrint).ToList().ForEach(Console.WriteLine);
-    }
+    public string PrettyPrint() =>
+        string.Join(
+            '\n',
+            elements.Select(e => e.PrettyPrint(0))
+        );
 }
 
-public static class ElementExtensions {
-    public static string PrettyPrint(this Element element) => element switch {
-        ElementList(var es) => $"[{string.Join(", ", es.Select(PrettyPrint))}]",
-        ElementQuote(var e) => e.PrettyPrint(),
+public abstract record Element {
+    public string PrettyPrint(int depth) => this switch {
+        ElementList(var es) => $"\n{new string('\t', depth)}({string.Join(", ", es.Select(e => e.PrettyPrint(depth + 1)))})",
+        ElementQuote(var e) => e.PrettyPrint(depth),
         ElementIdentifier(Identifier{ value: var value }) => $"Identifier {value}",
         ElementKeyword(Keyword{ type: var type }) => $"Keyword {type}",
         ElementNull                                 =>  "Literal null",
@@ -25,8 +27,6 @@ public static class ElementExtensions {
         _ => throw new InvalidProgramException("unreachable"),
     };
 }
-
-public abstract record Element;
 public record ElementList(List<Element> elements)      : Element;
 public record ElementQuote(Element quote)              : Element;
 public record ElementIdentifier(Identifier Identifier) : Element;
