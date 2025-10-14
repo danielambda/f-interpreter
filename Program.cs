@@ -19,6 +19,6 @@ tokens.Match(
   Left: a => Console.WriteLine(a),
   Right: ts => (new Parser(ts.ToArray()).ParseProgram()).Match (
     Left: a => Console.WriteLine(a),
-    Right: ast => ast.PrettyPrint()
+    Right: ast => Console.WriteLine(ast.PrettyPrint())
   )
 );
