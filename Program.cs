@@ -4,9 +4,9 @@ using LanguageExt;
 
 var example = """
 (prog (i sum)
-  (setq i 0)
+  '(setq i 0)
   (setq sum 0)
-  (while (true)
+  (while '(true)
     (prog ()
       (setq sum (plus sum i))
       (setq i (plus i 1))
