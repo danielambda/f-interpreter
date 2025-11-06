@@ -11,8 +11,6 @@ public record SemanticError(string message, Span span);
 public class SemanticAnalyzer {
     private Scope _currentScope;
     private readonly List<SemanticError> _errors = [];
-    private readonly Dictionary<string, List<Span>> _functionUses = [];
-    private readonly Dictionary<string, List<Span>> _variableUses = [];
 
     public SemanticAnalyzer() {
         _currentScope = new Scope("global", Scope.ScopeType.Global);
@@ -21,13 +19,9 @@ public class SemanticAnalyzer {
 
     public Either<ImmutableArray<SemanticError>, Unit> Analyze(Ast ast) {
         _errors.Clear();
-        _functionUses.Clear();
-        _variableUses.Clear();
 
         foreach (var element in ast.elements)
             VisitElement(element);
-
-        CheckUndeclaredIdentifiers();
 
         return _errors.Count == 0
             ? Unit.Default
@@ -80,7 +74,7 @@ public class SemanticAnalyzer {
                 VisitElement(element);
 
             if (first is ElementIdentifier ident)
-                TrackFunctionUse(ident.identifier.value, ident.identifier.span);
+                CheckIdentifierUsage(ident.identifier.value, ident.identifier.span);
         }
     }
 
@@ -256,33 +250,15 @@ public class SemanticAnalyzer {
             VisitElement(element);
     }
 
-    private void VisitIdentifier(ElementIdentifier ident) =>
-        TrackVariableUse(ident.identifier.value, ident.identifier.span);
+    private void VisitIdentifier(ElementIdentifier ident) {
+        CheckIdentifierUsage(ident.identifier.value, ident.identifier.span);
+    }
 
     private void VisitKeyword(ElementKeyword keyword) { }
 
-    private void TrackFunctionUse(string functionName, Span useSpan) {
-        if (!_functionUses.ContainsKey(functionName))
-            _functionUses[functionName] = [];
-        _functionUses[functionName].Add(useSpan);
-    }
-
-    private void TrackVariableUse(string variableName, Span useSpan) {
-        if (!_variableUses.ContainsKey(variableName))
-            _variableUses[variableName] = [];
-        _variableUses[variableName].Add(useSpan);
-    }
-
-    private void CheckUndeclaredIdentifiers() {
-        foreach (var (functionName, useSpans) in _functionUses)
-            if (_currentScope.Lookup(functionName) is null)
-                foreach (var span in useSpans)
-                    AddError($"Function '{functionName}' is not declared in '{_currentScope.Name}'", span);
-
-        foreach (var (variableName, useSpans) in _variableUses)
-            if (_currentScope.Lookup(variableName) is null)
-                foreach (var span in useSpans)
-                    AddError($"Variable '{variableName}' is not declared in '{_currentScope.Name}'", span);
+    private void CheckIdentifierUsage(string name, Span useSpan) {
+        if (_currentScope.Lookup(name) is null)
+            AddError($"Identifier '{name}' is not declared in current scope", useSpan);
     }
 
     private void AddError(string message, Span span) =>
