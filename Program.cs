@@ -1,5 +1,6 @@
 ﻿using FCompiler.Lexer;
 using FCompiler.Parser;
+using FCompiler.Semantic;
 using LanguageExt;
 
 var example = """
@@ -15,10 +16,16 @@ var example = """
 """;
 
 var tokens = Lexer.Lex(example.Split('\n')).Sequence();
-tokens.Match(
-  Left: a => Console.WriteLine(a),
-  Right: ts => (new Parser(ts.ToArray()).ParseProgram()).Match (
-    Left: a => Console.WriteLine(a),
-    Right: ast => Console.WriteLine(ast.PrettyPrint())
-  )
+var ast = tokens.Match(
+  Left: a => throw new Exception(a.ToString()),
+  Right: ts => new Parser(ts.ToArray()).ParseProgram()
 );
+var semantics = ast.Match(
+  Left: a => throw new Exception(a.ToString()),
+  Right: aboba => new SemanticAnalyzer().Analyze(aboba)
+);
+semantics.Match(
+  Left: aboba => aboba.Select(e => e.message).ToList().ForEach(Console.WriteLine),
+  Right: _ => Console.WriteLine("sall good man")
+);
+
