@@ -8,7 +8,7 @@ namespace FCompiler.Optimizations;
 
 public class Optimizer {
     private readonly Ast _ast;
-    private readonly Dictionary<string, (FunctionInfo Info, List<Element> Body)> _functions;
+    private readonly Dictionary<string, (FunctionInfo Info, Element Body)> _functions;
     private readonly Dictionary<string, int> _variableUsageCount;
 
     public Optimizer(Ast ast) {
@@ -18,29 +18,33 @@ public class Optimizer {
     }
 
     public Ast Optimize() {
-        CollectFunctionDefinitions();
-        CollectVariableUsage();
+        CollectFunctionDefinitions(_ast.elements);
+        CollectVariableUsage(_ast.elements);
 
-        // Применение оптимизаций
         var optimizedElements = _ast.elements.Select(OptimizeElement).ToList();
 
-        // Удаление неиспользуемых переменных
-        optimizedElements = RemoveUnusedVariables(optimizedElements);
-
-        // Инлайнинг функций
+        optimizedElements = RemoveUnusedDecls(optimizedElements);
         optimizedElements = InlineFunctions(optimizedElements);
+
+        _functions.Clear();
+        _variableUsageCount.Clear();
+        CollectFunctionDefinitions(optimizedElements);
+        CollectVariableUsage(optimizedElements);
+
+        optimizedElements = RemoveUnusedDecls(optimizedElements);
+        optimizedElements = optimizedElements.Select(OptimizeElement).ToList();
 
         return new Ast(optimizedElements);
     }
 
-    private void CollectFunctionDefinitions() {
-        foreach (var element in _ast.elements) {
+    private void CollectFunctionDefinitions(List<Element> elements) {
+        foreach (var element in elements) {
             if (element is ElementList {
                 elements:
                   [ ElementKeyword { keyword.type: Keyword.Type.Func }
                   , ElementIdentifier funcName
                   , ElementList paramList
-                  , ..var body
+                  , var body
                   ]
                 }
             ) {
@@ -57,13 +61,16 @@ public class Optimizer {
         }
     }
 
-    private void CollectVariableUsage() =>
-        _ast.elements.ForEach(CountVariableUsage);
+    private void CollectVariableUsage(List<Element> elements) =>
+        elements.ForEach(CountVariableUsage);
 
     private void CountVariableUsage(Element element) {
         switch (element) {
             case ElementList { elements: [ElementKeyword { keyword.type: Keyword.Type.Setq }, _, var value] }:
                 CountVariableUsage(value);
+                break;
+            case ElementList { elements: [ElementKeyword { keyword.type: Keyword.Type.Func }, _, _, ..var body] }:
+                body.ForEach(CountVariableUsage);
                 break;
             case ElementList { elements: [ElementKeyword { keyword.type: Keyword.Type.Prog }, _, ..var rest] }:
                 rest.ForEach(CountVariableUsage);
@@ -86,7 +93,6 @@ public class Optimizer {
     private ElementList OptimizeList(ElementList list) {
         var optimizedElements = list.elements.Select(OptimizeElement).ToList();
 
-        // Оптимизация арифметических операций с константами
         if (optimizedElements.Count == 3) {
             if (TryOptimizeArithmetic(optimizedElements) is {} result)
                 return result;
@@ -95,24 +101,27 @@ public class Optimizer {
         return new ElementList(optimizedElements);
     }
 
-    private ElementList? TryOptimizeArithmetic(List<Element> elements)
-    {
-        if (elements[0] is ElementIdentifier operation &&
-            elements[1] is ElementInteger i1 &&
-            elements[2] is ElementInteger i2)
-        {
+    private ElementList? TryOptimizeArithmetic(List<Element> elements) {
+        if (elements is
+            [ ElementIdentifier operation
+            , ElementInteger i1
+            , ElementInteger i2
+            ]
+        ) {
             var result = OptimizeArithmetic(operation.identifier.value, i1.integer.value, i2.integer.value);
             if (result.HasValue)
-                return new ElementList(new List<Element> { new ElementInteger(new Integer(result.Value, i1.integer.span)) });
+                return new ElementList([new ElementInteger(new Integer(result.Value, i1.integer.span))]);
         }
 
-        if (elements[0] is ElementIdentifier operation2 &&
-            elements[1] is ElementReal r1 &&
-            elements[2] is ElementReal r2)
-        {
+        if (elements is
+            [ ElementIdentifier operation2
+            , ElementReal r1
+            , ElementReal r2
+            ]
+        ) {
             var result = OptimizeArithmetic(operation2.identifier.value, r1.real.value, r2.real.value);
             if (result.HasValue)
-                return new ElementList(new List<Element> { new ElementReal(new Real(result.Value, r1.real.span)) });
+                return new ElementList([new ElementReal(new Real(result.Value, r1.real.span))]);
         }
 
         return null;
@@ -134,14 +143,13 @@ public class Optimizer {
         _ => null
     };
 
-    private List<Element> RemoveUnusedVariables(List<Element> elements) {
-        // Console.WriteLine($"RemoveUnusedVariables {elements.Count}");
+    private List<Element> RemoveUnusedDecls(List<Element> elements) {
         var result = new List<Element>();
 
         foreach (var element in elements) {
             if (element is ElementList {
                 elements:
-                  [ ElementKeyword { keyword.type: Keyword.Type.Setq }
+                  [ ElementKeyword { keyword.type: Keyword.Type.Setq or Keyword.Type.Func }
                   , ElementIdentifier varIdent
                   , ..
                   ]
@@ -157,7 +165,6 @@ public class Optimizer {
                   ]
                 }
             ) {
-                // Оптимизация объявлений переменных в prog
                 var optimizedVars = new List<Element>();
                 foreach (var varElement in progArgs) {
                     if (varElement is ElementIdentifier progVarIdent) {
@@ -171,7 +178,7 @@ public class Optimizer {
                 }
 
                 var optimizedList = new List<Element> { prog, new ElementList(optimizedVars) };
-                optimizedList.AddRange(RemoveUnusedVariables(rest).Select(OptimizeElement));
+                optimizedList.AddRange(RemoveUnusedDecls(rest).Select(OptimizeElement));
                 result.Add(new ElementList(optimizedList));
             } else {
                 result.Add(element);
@@ -182,33 +189,34 @@ public class Optimizer {
     }
 
     private List<Element> InlineFunctions(List<Element> elements) {
-        var result = new List<Element>();
+        return elements.Map(Inline).ToList();
 
-        foreach (var element in elements) {
-            // Console.WriteLine($"TryInlineFunctionCall {element}");
-            if (TryInlineFunctionCall(element) is {} inlined) {
-                result.AddRange(inlined);
-            } else {
-                result.Add(element);
-            }
-        }
-
-        return result;
+        Element Inline(Element element) => element switch {
+            ElementList { elements: [ElementKeyword { keyword.type: Keyword.Type.Setq } setq, var indent, var value] } =>
+                new ElementList([setq, indent, Inline(value)]),
+            ElementList { elements: [ElementKeyword { keyword.type: Keyword.Type.Prog } prog, var scope, ..var body] } =>
+                new ElementList([prog, scope, ..InlineFunctions(body)]),
+            ElementList elementList when TryInlineFunctionCall(elementList) is {} inlined =>
+                inlined,
+            _ => element
+        };
     }
 
-    private List<Element>? TryInlineFunctionCall(Element element) =>
-        element is ElementList { elements: [ElementIdentifier ident, ..var args] } list
-        && _functions.TryGetValue(ident.identifier.value, out var func)
-        && args.Count == func.Info.parameters.Count
-          ? PerformFunctionInlining(args, func.Body, func.Info)
-          : null;
+    private Element? TryInlineFunctionCall(ElementList element) {
+        var res =
+            element.elements is [ElementIdentifier ident, ..var args] list
+            && _functions.TryGetValue(ident.identifier.value, out var func)
+            && args.Count == func.Info.parameters.Count
+              ? BetaReduce(args, func.Body, func.Info)
+              : null;
 
-    private List<Element> PerformFunctionInlining(List<Element> args, List<Element> funcBody, FunctionInfo funcInfo) {
-        // Console.WriteLine("PerformFunctionInlining");
+        return res;
+    }
+
+    private Element BetaReduce(List<Element> args, Element funcBody, FunctionInfo funcInfo) {
+        // TODO handle names collision
         var paramMap = funcInfo.parameters.Zip(args).ToDictionary();
-        return funcBody
-            .Select(e => ReplaceParameters(e, paramMap))
-            .ToList();
+        return ReplaceParameters(funcBody, paramMap);
     }
 
     private Element ReplaceParameters(

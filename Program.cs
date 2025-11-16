@@ -23,9 +23,12 @@ var examples = new[]
     {
         Name = "Пример 2: Инлайнинг простой функции",
         Code = """
-        (func inc (x) (plus x 1))
-        (prog (result)
-          (setq result (inc 5))
+        (func inc (x) (lambda (y) (plus x y)))
+        (prog (result y a)
+          (setq a 2)
+          (setq y 5)
+          (setq result (inc y))
+          (setq result (result a))
           result)
         """,
         ExpectedOptimization = "Должен заменить вызов inc на (plus 5 1)"
@@ -82,129 +85,65 @@ var examples = new[]
         """,
         ExpectedOptimization = "Должен удалить temp1 и temp2"
     },
-    new
-    {
-        Name = "Пример 7: Рекурсивные вычисления",
-        Code = """
-        (func factorial (n)
-          (cond (equal n 0)
-            1
-            (times n (factorial (minus n 1)))))
-
-        (prog (result)
-          (setq result (factorial 5))
-          result)
-        """,
-        ExpectedOptimization = "Должен попытаться инлайнить factorial (но может не сработать из-за рекурсии)"
-    },
-    new
-    {
-        Name = "Пример 8: Lambda-функции",
-        Code = """
-        (prog (result)
-          (setq result ((lambda (x y) (times (plus x y) 2)) 3 4))
-          result)
-        """,
-        ExpectedOptimization = "Должен вычислить (3+4)*2=14"
-    },
-    new
-    {
-        Name = "Пример 9: Множественные неиспользуемые переменные",
-        Code = """
-        (prog (used1 unused1 used2 unused2 unused3)
-          (setq used1 1)
-          (setq unused1 2)
-          (setq used2 3)
-          (setq unused2 4)
-          (setq unused3 5)
-          (plus used1 used2))
-        """,
-        ExpectedOptimization = "Должен оставить только used1 и used2"
-    },
-    new
-    {
-        Name = "Пример 10: Оптимизация в цикле",
-        Code = """
-        (func calculate (x) (plus x 1))
-        (prog (i sum temp)
-          (setq i 0)
-          (setq sum 0)
-          (setq temp 999)  ; не используется в цикле
-          (while (less i 5)
-            (prog ()
-              (setq sum (calculate sum))
-              (setq i (plus i 1))))
-          sum)
-        """,
-        ExpectedOptimization = "Должен удалить temp и инлайнить calculate"
-    }
 };
 
-foreach (var example in examples)
-{
+foreach (var example in examples.Skip(1).Take(1)) {
     Console.WriteLine($"\n{new string('=', 60)}");
     Console.WriteLine(example.Name);
     Console.WriteLine($"Ожидаемая оптимизация: {example.ExpectedOptimization}");
     Console.WriteLine(new string('=', 60));
 
-    try
-    {
-        var tokens = Lexer.Lex(example.Code.Split('\n')).Sequence();
-        var ast = tokens.Match(
-            Left: a => throw new Exception($"Lexer error: {a}"),
-            Right: ts => new Parser(ts.ToArray()).ParseProgram()
-        );
+    var tokens = Lexer.Lex(example.Code.Split('\n')).Sequence();
+    var ast = tokens.Match(
+        Left: a => throw new Exception($"Lexer error: {a}"),
+        Right: ts => new Parser(ts.ToArray()).ParseProgram()
+    );
 
-        var semantics = ast.Match(
-            Left: a => throw new Exception($"Parser error: {a}"),
-            Right: parsedAst => new SemanticAnalyzer().Analyze(parsedAst)
-        );
+    var semantics = ast.Match(
+        Left: a => throw new Exception($"Parser error: {a}"),
+        Right: parsedAst => new SemanticAnalyzer().Analyze(parsedAst)
+    );
 
-        semantics.Match(
-            Left: errors => {
-                foreach (var error in errors)
-                    Console.WriteLine($"Semantic error: {error.message} at {error.span}");
-                throw new Exception("Semantic analysis failed");
-            },
-            Right: _ => Console.WriteLine("✓ Семантический анализ пройден")
-        );
+    semantics.Match(
+        Left: errors => {
+            foreach (var error in errors)
+                Console.WriteLine($"Semantic error: {error.message} at {error.span}");
+            throw new Exception("Semantic analysis failed");
+        },
+        Right: _ => Console.WriteLine("✓ Семантический анализ пройден")
+    );
 
-        var optimized = ast.Match(
-            Left: a => throw new Exception($"AST error: {a}"),
-            Right: parsedAst => new Optimizer(parsedAst).Optimize()
-        );
+    var optimized = ast.Match(
+        Left: a => throw new Exception($"AST error: {a}"),
+        Right: parsedAst => new Optimizer(parsedAst).Optimize()
+    );
 
-        Console.WriteLine("✓ Оптимизация завершена успешно!");
+    Console.WriteLine("✓ Оптимизация завершена успешно!");
 
-        // Сравнение исходного и оптимизированного AST
-        ast.Match(
-            Left: _ => {},
-            Right: original =>
+    // Сравнение исходного и оптимизированного AST
+    ast.Match(
+        Left: _ => {},
+        Right: original =>
+        {
+            Console.WriteLine("\nИСХОДНЫЙ AST:");
+            Console.WriteLine(original.PrettyPrint());
+            Console.WriteLine("\nОПТИМИЗИРОВАННЫЙ AST:");
+            Console.WriteLine(optimized.PrettyPrint());
+
+            // Простая проверка изменений
+            var originalStr = original.PrettyPrint();
+            var optimizedStr = optimized.PrettyPrint();
+
+            if (originalStr == optimizedStr)
             {
-                Console.WriteLine("\nИСХОДНЫЙ AST:");
-                Console.WriteLine(original.PrettyPrint());
-                Console.WriteLine("\nОПТИМИЗИРОВАННЫЙ AST:");
-                Console.WriteLine(optimized.PrettyPrint());
-
-                // Простая проверка изменений
-                var originalStr = original.PrettyPrint();
-                var optimizedStr = optimized.PrettyPrint();
-
-                if (originalStr == optimizedStr)
-                {
-                    Console.WriteLine("\n⚠️  AST не изменился после оптимизации");
-                }
-                else
-                {
-                    Console.WriteLine("\n✅ AST был изменен оптимизатором");
-                }
+                Console.WriteLine("\n⚠️  AST не изменился после оптимизации");
             }
-        );
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"❌ Ошибка: {ex.Message}");
-    }
+            else
+            {
+                Console.WriteLine("\n✅ AST был изменен оптимизатором");
+            }
+        }
+    );
 }
 
 Console.WriteLine("\n" + new string('=', 60));
