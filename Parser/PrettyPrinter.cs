@@ -26,26 +26,26 @@ public static class PrettyPrinter {
             string.IsNullOrWhiteSpace(line) ? "" : $"{Offset(depth)}│           {line}"));
     }
 
-    private static StringBuilder AppendElement(
+    public static StringBuilder AppendElement(
         this StringBuilder sb,
         Element element,
         int indentLevel,
         string myPrefix,
         string childPrefix
     ) => element switch {
-        ElementList(var els) when els.Count == 0 => sb.Append($"{myPrefix}Empty List"),
-        ElementList(var els) => sb.Append($"{myPrefix}List:") .AppendChildren(els, indentLevel + 1, childPrefix),
-        ElementQuote(var q)  => sb.Append($"{myPrefix}Quote:").AppendChildren([q], indentLevel + 1, childPrefix),
-        ElementIdentifier { identifier.value: var v } => sb.Append($"{myPrefix}Identifier: {v}"),
-        ElementKeyword { keyword.type: var v }        => sb.Append($"{myPrefix}Keyword: {v}"),
-        ElementNull                                   => sb.Append($"{myPrefix}Null"),
-        ElementInteger { integer.value: var v }       => sb.Append($"{myPrefix}Literal: {v}"),
-        ElementReal { real.value: var v }             => sb.Append($"{myPrefix}Literal: {v}"),
-        ElementBool { boolean.value: var v }          => sb.Append($"{myPrefix}Literal: {v}"),
+        Element.List(var els) when els.Count == 0 => sb.Append($"{myPrefix}Empty List"),
+        Element.List(var els) => sb.Append($"{myPrefix}List:") .AppendChildren(els, indentLevel + 1, childPrefix),
+        Element.Quote(var q)  => sb.Append($"{myPrefix}Quote:").AppendChildren([q], indentLevel + 1, childPrefix),
+        Element.Identifier { identifier.value: var v }  => sb.Append($"{myPrefix}Identifier: {v}"),
+        Element.SpecialForm { specialForm.type: var v } => sb.Append($"{myPrefix}SpecialForm: {v}"),
+        Element.Null                                    => sb.Append($"{myPrefix}Null"),
+        Element.Integer { integer.value: var v }        => sb.Append($"{myPrefix}Literal: {v}"),
+        Element.Real { real.value: var v }              => sb.Append($"{myPrefix}Literal: {v}"),
+        Element.Bool { boolean.value: var v }           => sb.Append($"{myPrefix}Literal: {v}"),
         _ => throw new ArgumentException($"Unknown element type: {element.GetType().Name}")
     };
 
-    private static StringBuilder AppendChildren(
+    public static StringBuilder AppendChildren(
         this StringBuilder sb,
         List<Element> children,
         int indentLevel,

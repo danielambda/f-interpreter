@@ -6,18 +6,23 @@ using System.Collections.Immutable;
 
 namespace FCompiler.Optimizations;
 
+public record FunInfo(List<Sem.Identifier> args, Sem.Expr body);
+
 public class Optimizer {
-    private readonly Ast _ast;
-    private readonly Dictionary<string, (FunctionInfo Info, Element Body)> _functions;
+    public static Sem.Ast Optimize(Sem.Ast ast) =>
+        new Optimizer(ast).Run();
+
+    private readonly Sem.Ast _ast;
+    private readonly Dictionary<string, FunInfo> _functions;
     private readonly Dictionary<string, int> _variableUsageCount;
 
-    public Optimizer(Ast ast) {
+    private Optimizer(Sem.Ast ast) {
         _ast = ast;
         _functions = [];
         _variableUsageCount = [];
     }
 
-    public Ast Optimize() {
+    private Sem.Ast Run() {
         CollectFunctionDefinitions(_ast.elements);
         CollectVariableUsage(_ast.elements);
 
@@ -34,98 +39,77 @@ public class Optimizer {
         optimizedElements = RemoveUnusedDecls(optimizedElements);
         optimizedElements = optimizedElements.Select(OptimizeElement).ToList();
 
-        return new Ast(optimizedElements);
+        return new Sem.Ast(optimizedElements);
     }
 
-    private void CollectFunctionDefinitions(List<Element> elements) {
+    private void CollectFunctionDefinitions(List<Sem.Elem> elements) {
         foreach (var element in elements) {
-            if (element is ElementList {
-                elements:
-                  [ ElementKeyword { keyword.type: Keyword.Type.Func }
-                  , ElementIdentifier funcName
-                  , ElementList paramList
-                  , var body
-                  ]
-                }
-            ) {
-                // TODO casting logic here is not totally correct
-                var parameters = paramList.elements
-                    .OfType<ElementIdentifier>()
-                    .Select(param => param.identifier.value)
-                    .ToList();
-                _functions[funcName.identifier.value] =
-                    ( new FunctionInfo(parameters, funcName.identifier.span)
-                    , body
-                    );
+            if (element is Sem.Fun(var funcName, var paramList, var body)) {
+                _functions[funcName.identifier.identifier.value] = new FunInfo(paramList, body);
             }
         }
     }
 
-    private void CollectVariableUsage(List<Element> elements) =>
-        elements.ForEach(CountVariableUsage);
+    private void CollectVariableUsage(IEnumerable<Sem.Elem> elements) =>
+        elements.ToList().ForEach(CountVariableUsage);
 
-    private void CountVariableUsage(Element element) {
+    private void CountVariableUsage(Sem.Elem element) {
         switch (element) {
-            case ElementList { elements: [ElementKeyword { keyword.type: Keyword.Type.Setq }, _, var value] }:
+            case Sem.Setq(_, var value):
                 CountVariableUsage(value);
                 break;
-            case ElementList { elements: [ElementKeyword { keyword.type: Keyword.Type.Func }, _, _, ..var body] }:
-                body.ForEach(CountVariableUsage);
+            case Sem.Fun(_, _, var body):
+                CountVariableUsage(body);
                 break;
-            case ElementList { elements: [ElementKeyword { keyword.type: Keyword.Type.Prog }, _, ..var rest] }:
-                rest.ForEach(CountVariableUsage);
+            case Sem.Lambda(_, var body):
+                CountVariableUsage(body);
                 break;
-            case ElementList list:
-                list.elements.ForEach(CountVariableUsage);
+            case Sem.Prog(_, var body, var last):
+                CollectVariableUsage(body);
+                CountVariableUsage(last);
                 break;
-            case ElementIdentifier ident:
-                var varName = ident.identifier.value;
+            case Sem.Cond(var cond, var t, var f):
+                CountVariableUsage(cond);
+                CountVariableUsage(t);
+                if (f is not null) CountVariableUsage(f);
+                break;
+            case Sem.While(var cond, var body):
+                CountVariableUsage(cond);
+                CountVariableUsage(body);
+                break;
+            case Sem.Return(var value):
+                CountVariableUsage(value);
+                break;
+            case Sem.FunApp(var f, var x):
+                CountVariableUsage(f);
+                CollectVariableUsage(x);
+                break;
+            case Sem.Identifier ident:
+                var varName = ident.identifier.identifier.value;
                 _variableUsageCount[varName] = _variableUsageCount.GetValueOrDefault(varName) + 1;
                 break;
         }
     }
 
-    private Element OptimizeElement(Element element) => element switch {
-        ElementList list => OptimizeList(list),
+    private Sem.Elem OptimizeElement(Sem.Elem element) => element switch {
         _ => element
     };
 
-    private ElementList OptimizeList(ElementList list) {
-        var optimizedElements = list.elements.Select(OptimizeElement).ToList();
-
-        if (optimizedElements.Count == 3) {
-            if (TryOptimizeArithmetic(optimizedElements) is {} result)
-                return result;
-        }
-
-        return new ElementList(optimizedElements);
-    }
-
-    private ElementList? TryOptimizeArithmetic(List<Element> elements) {
-        if (elements is
-            [ ElementIdentifier operation
-            , ElementInteger i1
-            , ElementInteger i2
-            ]
-        ) {
-            var result = OptimizeArithmetic(operation.identifier.value, i1.integer.value, i2.integer.value);
-            if (result.HasValue)
-                return new ElementList([new ElementInteger(new Integer(result.Value, i1.integer.span))]);
-        }
-
-        if (elements is
-            [ ElementIdentifier operation2
-            , ElementReal r1
-            , ElementReal r2
-            ]
-        ) {
-            var result = OptimizeArithmetic(operation2.identifier.value, r1.real.value, r2.real.value);
-            if (result.HasValue)
-                return new ElementList([new ElementReal(new Real(result.Value, r1.real.span))]);
-        }
-
-        return null;
-    }
+    private Sem.Expr? TryOptimizeArithmetic(Sem.FunApp funApp) => funApp switch {
+        Sem.FunApp(Sem.Identifier op, [Sem.Integer i1, Sem.Integer i2])
+            when OptimizeArithmetic(
+                op.identifier.identifier.value,
+                i1.integer.integer.value,
+                i2.integer.integer.value
+            ) is {} result => new Sem.Integer(new Element.Integer(new Token.Integer(result, i1.integer.integer.span))),
+        Sem.FunApp(Sem.Identifier op, [Sem.Real r1, Sem.Real r2])
+            when OptimizeArithmetic(
+                op.identifier.identifier.value,
+                r1.real.real.value,
+                r2.real.real.value
+            ) is {} result => new Sem.Real(new Element.Real(new Token.Real(result, r1.real.real.span))),
+        _ => null!
+    };
 
     private double? OptimizeArithmetic(string operation, double a, double b) => operation switch {
         "plus" => a + b,
@@ -143,43 +127,18 @@ public class Optimizer {
         _ => null
     };
 
-    private List<Element> RemoveUnusedDecls(List<Element> elements) {
-        var result = new List<Element>();
+    private List<Sem.Elem> RemoveUnusedDecls(List<Sem.Elem> elements) {
+        var result = new List<Sem.Elem>();
 
         foreach (var element in elements) {
-            if (element is ElementList {
-                elements:
-                  [ ElementKeyword { keyword.type: Keyword.Type.Setq or Keyword.Type.Func }
-                  , ElementIdentifier varIdent
-                  , ..
-                  ]
-                }
-            ) {
-                if (_variableUsageCount.GetValueOrDefault(varIdent.identifier.value) > 0)
+            if (element is Sem.Setq(var qName, _)) {
+                if (_variableUsageCount.GetValueOrDefault(qName.identifier.identifier.value) > 0)
                     result.Add(element);
-            } else if (element is ElementList {
-                elements:
-                  [ ElementKeyword { keyword.type: Keyword.Type.Prog } prog
-                  , ElementList { elements: var progArgs }
-                  , ..var rest
-                  ]
-                }
-            ) {
-                var optimizedVars = new List<Element>();
-                foreach (var varElement in progArgs) {
-                    if (varElement is ElementIdentifier progVarIdent) {
-                        var varName = progVarIdent.identifier.value;
-                        if (_variableUsageCount.GetValueOrDefault(varName) > 0) {
-                            optimizedVars.Add(varElement);
-                        }
-                    } else {
-                        optimizedVars.Add(varElement);
-                    }
-                }
-
-                var optimizedList = new List<Element> { prog, new ElementList(optimizedVars) };
-                optimizedList.AddRange(RemoveUnusedDecls(rest).Select(OptimizeElement));
-                result.Add(new ElementList(optimizedList));
+            } else if (element is Sem.Fun(var funName, _, _)) {
+                if (_variableUsageCount.GetValueOrDefault(funName.identifier.identifier.value) > 0)
+                    result.Add(element);
+            } else if (element is Sem.Prog prog) {
+                result.Add(prog with { body = RemoveUnusedDecls(prog.body) });
             } else {
                 result.Add(element);
             }
@@ -188,45 +147,62 @@ public class Optimizer {
         return result;
     }
 
-    private List<Element> InlineFunctions(List<Element> elements) {
+    private List<Sem.Elem> InlineFunctions(List<Sem.Elem> elements) {
         return elements.Map(Inline).ToList();
 
-        Element Inline(Element element) => element switch {
-            ElementList { elements: [ElementKeyword { keyword.type: Keyword.Type.Setq } setq, var indent, var value] } =>
-                new ElementList([setq, indent, Inline(value)]),
-            ElementList { elements: [ElementKeyword { keyword.type: Keyword.Type.Prog } prog, var scope, ..var body] } =>
-                new ElementList([prog, scope, ..InlineFunctions(body)]),
-            ElementList elementList when TryInlineFunctionCall(elementList) is {} inlined =>
-                inlined,
-            _ => element
+        Sem.Elem Inline(Sem.Elem elem) => elem switch {
+            Sem.Setq setq => setq with { body = InlineExpr(setq.body) },
+            Sem.Expr expr => InlineExpr(expr),
+            _ => elem,
+        };
+
+        Sem.Expr InlineExpr(Sem.Expr expr) => expr switch {
+            Sem.Prog prog => prog with { body = InlineFunctions(prog.body), last = InlineExpr(prog.last) },
+            Sem.FunApp funApp when TryInlineFunctionCall(funApp) is { } inlined => inlined,
+            _ => expr,
         };
     }
 
-    private Element? TryInlineFunctionCall(ElementList element) {
-        var res =
-            element.elements is [ElementIdentifier ident, ..var args] list
-            && _functions.TryGetValue(ident.identifier.value, out var func)
-            && args.Count == func.Info.parameters.Count
-              ? BetaReduce(args, func.Body, func.Info)
-              : null;
+    private Sem.Expr? TryInlineFunctionCall(Sem.FunApp funApp) => funApp switch {
+        Sem.FunApp(Sem.Identifier ident, var args)
+            when _functions.TryGetValue(ident.identifier.identifier.value, out var func)
+              && args.Count == func.args.Count
+            => BetaReduce(args, func.args, func.body),
+        Sem.FunApp(Sem.Lambda lambda, var args)
+            when args.Count == lambda.args.Count
+            => BetaReduce(args, lambda.args, lambda.body),
+        _ => null,
+    };
 
-        return res;
-    }
-
-    private Element BetaReduce(List<Element> args, Element funcBody, FunctionInfo funcInfo) {
+    private Sem.Expr BetaReduce(
+        List<Sem.Expr> passedArgs,
+        List<Sem.Identifier> expectedArgs,
+        Sem.Expr body
+    ) {
         // TODO handle names collision
-        var paramMap = funcInfo.parameters.Zip(args).ToDictionary();
-        return ReplaceParameters(funcBody, paramMap);
+        var paramMap = expectedArgs.Zip(passedArgs).ToDictionary();
+        return ReplaceParameters(body, paramMap);
     }
 
-    private Element ReplaceParameters(
-        Element element,
-        Dictionary<string, Element> paramMap
-    ) => element switch {
-        ElementIdentifier ident when paramMap.ContainsKey(ident.identifier.value) =>
-            paramMap[ident.identifier.value],
-        ElementList list =>
-            new ElementList(list.elements.Select(e => ReplaceParameters(e, paramMap)).ToList()),
-        _ => element
+    private Sem.Expr ReplaceParameters(
+        Sem.Expr body,
+        Dictionary<Sem.Identifier, Sem.Expr> paramMap
+    ) => body switch {
+        Sem.Identifier ident when paramMap.TryGetValue(ident, out var param) => param,
+        Sem.FunApp(var fun, var args) => new Sem.FunApp(
+            ReplaceParameters(fun, paramMap),
+            args.Map(a => ReplaceParameters(a, paramMap)).ToList()
+        ),
+        Sem.Cond(var cond, var t, var f) => new Sem.Cond(
+            ReplaceParameters(cond, paramMap),
+            ReplaceParameters(t   , paramMap),
+            f is {} ff ? ReplaceParameters(ff, paramMap) : null
+        ),
+        Sem.While(var cond, var whileBody) => new Sem.While(
+            ReplaceParameters(cond,      paramMap),
+            ReplaceParameters(whileBody, paramMap)
+        ),
+        Sem.Return(var value) => new Sem.Return( ReplaceParameters(value, paramMap)),
+        _ => body
     };
 }

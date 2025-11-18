@@ -2,29 +2,30 @@ using FCompiler.Utils;
 
 namespace FCompiler.Lexer;
 
-public abstract record Token(Span span);
-public record Identifier(string value, Span span)   : Token(span);
-public record Integer(long value, Span span)        : Token(span);
-public record Real(double value, Span span)         : Token(span);
-public record Bool(bool value, Span span)           : Token(span);
-public record Keyword(Keyword.Type type, Span span) : Token(span) {
-  public enum Type : byte {
-    Null,
-    Quote,
-    Setq,
-    Func,
-    Lambda,
-    Cond,
-    Prog,
-    While,
-    Return,
-    Break,
+public abstract record Token(Span span) {
+  public record Identifier(string value, Span span)   : Token(span);
+  public record Integer(long value, Span span)        : Token(span);
+  public record Real(double value, Span span)         : Token(span);
+  public record Bool(bool value, Span span)           : Token(span);
+  public record Null(Span span)                       : Token(span);
+  public record SpecialForm(SpecialForm.Type type, Span span) : Token(span) {
+    public enum Type : byte {
+      Quote,
+      Setq,
+      Func,
+      Lambda,
+      Cond,
+      Prog,
+      While,
+      Return,
+      Break,
+    }
   }
-}
-public record Punctuation(Punctuation.Type type, Span span) : Token(span) {
-  public enum Type : byte {
-    LParen,
-    RParen,
-    QuoteOp,
+  public record Punctuation(Punctuation.Type type, Span span) : Token(span) {
+    public enum Type : byte {
+      LParen,
+      RParen,
+      QuoteOp,
+    }
   }
 }

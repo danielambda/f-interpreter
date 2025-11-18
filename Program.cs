@@ -99,49 +99,40 @@ foreach (var example in examples.Skip(1).Take(1)) {
         Right: ts => new Parser(ts.ToArray()).ParseProgram()
     );
 
-    var semantics = ast.Match(
+    var semAst = ast.Match(
         Left: a => throw new Exception($"Parser error: {a}"),
-        Right: parsedAst => new SemanticAnalyzer().Analyze(parsedAst)
+        Right: parsedAst => Analyzer.Analyze(parsedAst)
     );
 
-    semantics.Match(
-        Left: errors => {
-            foreach (var error in errors)
-                Console.WriteLine($"Semantic error: {error.message} at {error.span}");
+    var optimized = semAst.Match(
+        Left: error => {
+            Console.WriteLine($"Semantic error: {error.message} at {error.span}");
             throw new Exception("Semantic analysis failed");
         },
-        Right: _ => Console.WriteLine("✓ Семантический анализ пройден")
-    );
-
-    var optimized = ast.Match(
-        Left: a => throw new Exception($"AST error: {a}"),
-        Right: parsedAst => new Optimizer(parsedAst).Optimize()
+        Right: semAst => {
+            Console.WriteLine("✓ Семантический анализ пройден");
+            return Optimizer.Optimize(semAst);
+        }
     );
 
     Console.WriteLine("✓ Оптимизация завершена успешно!");
 
     // Сравнение исходного и оптимизированного AST
-    ast.Match(
+    semAst.Match(
         Left: _ => {},
-        Right: original =>
-        {
-            Console.WriteLine("\nИСХОДНЫЙ AST:");
-            Console.WriteLine(original.PrettyPrint());
-            Console.WriteLine("\nОПТИМИЗИРОВАННЫЙ AST:");
-            Console.WriteLine(optimized.PrettyPrint());
+        Right: original => {
+            var originalStr = original.ToAst().PrettyPrint();
+            var optimizedStr = optimized.ToAst().PrettyPrint();
 
-            // Простая проверка изменений
-            var originalStr = original.PrettyPrint();
-            var optimizedStr = optimized.PrettyPrint();
+            Console.WriteLine("\nИСХОДНЫЙ AST:");
+            Console.WriteLine(originalStr);
+            Console.WriteLine("\nОПТИМИЗИРОВАННЫЙ AST:");
+            Console.WriteLine(optimizedStr);
 
             if (originalStr == optimizedStr)
-            {
                 Console.WriteLine("\n⚠️  AST не изменился после оптимизации");
-            }
             else
-            {
                 Console.WriteLine("\n✅ AST был изменен оптимизатором");
-            }
         }
     );
 }

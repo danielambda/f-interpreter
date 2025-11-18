@@ -1,22 +1,11 @@
 using FCompiler.Lexer;
 using FCompiler.Utils;
 using LanguageExt;
+using static FCompiler.Lexer.Token.Punctuation.Type;
 
 namespace FCompiler.Parser;
 
 public record ParserError(string message, Span span);
-
-public record Ast(List<Element> elements);
-
-public abstract record Element;
-public record ElementList(List<Element> elements)      : Element;
-public record ElementQuote(Element quote)              : Element;
-public record ElementIdentifier(Identifier identifier) : Element;
-public record ElementKeyword(Keyword keyword)          : Element;
-public record ElementNull(Span span)                   : Element;
-public record ElementInteger(Integer integer)          : Element;
-public record ElementReal(Real real)                   : Element;
-public record ElementBool(Bool boolean)                : Element;
 
 public class Parser {
     private readonly IEnumerator<Token> _tokenEnumerator;
@@ -50,15 +39,15 @@ public class Parser {
         var prev = _current;
         Advance();
         return prev switch {
-            Punctuation{ type: Punctuation.Type.RParen, span: var span } => new ParserError($"Unexpected )", span),
-            Punctuation{ type: Punctuation.Type.LParen, span: var span } => ParseList(span).Map(a => (Element)(new ElementList(a))),
-            Punctuation{ type: Punctuation.Type.QuoteOp } => ParseElement().Map(a => (Element)(new ElementQuote(a))),
-            Identifier a => new ElementIdentifier(a),
-            Keyword{ type: Keyword.Type.Null, span: var span } => new ElementNull(span),
-            Keyword a => new ElementKeyword(a),
-            Integer a => new ElementInteger(a),
-            Real a => new ElementReal(a),
-            Bool a => new ElementBool(a),
+            Token.Punctuation{ type: RParen, span: var span } => new ParserError($"Unexpected )", span),
+            Token.Punctuation{ type: LParen, span: var span } => ParseList(span).Map(a => (Element)(new Element.List(a))),
+            Token.Punctuation{ type: QuoteOp } => ParseElement().Map(a => (Element)(new Element.Quote(a))),
+            Token.Identifier a  => new Element.Identifier(a),
+            Token.Null a        => new Element.Null(a),
+            Token.SpecialForm a => new Element.SpecialForm(a),
+            Token.Integer a     => new Element.Integer(a),
+            Token.Real a        => new Element.Real(a),
+            Token.Bool a        => new Element.Bool(a),
             null or _ => throw new InvalidProgramException("unreachable")
         };
     }
@@ -67,7 +56,7 @@ public class Parser {
         List<Element> elements = [];
         ParserError? error = null;
         while (_current is not null && error is null) {
-            if (_current is Punctuation{ type: Punctuation.Type.RParen }) {
+            if (_current is Token.Punctuation{ type: RParen }) {
                 Advance();
                 return elements;
             }

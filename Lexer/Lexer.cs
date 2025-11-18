@@ -1,6 +1,8 @@
 using FCompiler.Utils;
 using LanguageExt;
 using System.Text;
+using static FCompiler.Lexer.Token.Punctuation.Type;
+using static FCompiler.Lexer.Token.SpecialForm.Type;
 
 namespace FCompiler.Lexer;
 
@@ -59,19 +61,19 @@ public class Lexer {
 
             if (Current == '(') {
                 Advance();
-                yield return new Punctuation(Punctuation.Type.LParen, _span);
+                yield return new Token.Punctuation(LParen, _span);
                 continue;
             }
 
             if (Current == ')') {
                 Advance();
-                yield return new Punctuation(Punctuation.Type.RParen, _span);
+                yield return new Token.Punctuation(RParen, _span);
                 continue;
             }
 
             if (Current == '\'') {
                 Advance();
-                yield return new Punctuation(Punctuation.Type.QuoteOp, _span);
+                yield return new Token.Punctuation(QuoteOp, _span);
                 continue;
             }
 
@@ -99,19 +101,19 @@ public class Lexer {
         string id = idBuilder.ToString();
 
         return id switch {
-            "true"   => new Bool(true,                   _span),
-            "false"  => new Bool(false,                  _span),
-            "null"   => new Keyword(Keyword.Type.Null,   _span),
-            "quote"  => new Keyword(Keyword.Type.Quote,  _span),
-            "setq"   => new Keyword(Keyword.Type.Setq,   _span),
-            "func"   => new Keyword(Keyword.Type.Func,   _span),
-            "lambda" => new Keyword(Keyword.Type.Lambda, _span),
-            "cond"   => new Keyword(Keyword.Type.Cond,   _span),
-            "prog"   => new Keyword(Keyword.Type.Prog,   _span),
-            "while"  => new Keyword(Keyword.Type.While,  _span),
-            "return" => new Keyword(Keyword.Type.Return, _span),
-            "break"  => new Keyword(Keyword.Type.Break,  _span),
-            _        => new Identifier(id,               _span)
+            "true"   => new Token.Bool(true,          _span),
+            "false"  => new Token.Bool(false,         _span),
+            "null"   => new Token.Null(               _span),
+            "quote"  => new Token.SpecialForm(Quote,  _span),
+            "setq"   => new Token.SpecialForm(Setq,   _span),
+            "func"   => new Token.SpecialForm(Func,   _span),
+            "lambda" => new Token.SpecialForm(Lambda, _span),
+            "cond"   => new Token.SpecialForm(Cond,   _span),
+            "prog"   => new Token.SpecialForm(Prog,   _span),
+            "while"  => new Token.SpecialForm(While,  _span),
+            "return" => new Token.SpecialForm(Return, _span),
+            "break"  => new Token.SpecialForm(Break,  _span),
+            _        => new Token.Identifier(id,      _span)
         };
     }
 
@@ -146,13 +148,13 @@ public class Lexer {
         string numStr = numBuilder.ToString();
         if (hasDot) {
             if (double.TryParse(numStr, out double realValue))
-                return new Real(realValue, _span);
+                return new Token.Real(realValue, _span);
             else
                 return new LexerError($"Invalid real number: {numStr}", _span);
         }
         else {
             if (int.TryParse(numStr, out int intValue))
-                return new Integer(intValue, _span);
+                return new Token.Integer(intValue, _span);
             else
                 return new LexerError($"Invalid integer number: {numStr}", _span);
         }

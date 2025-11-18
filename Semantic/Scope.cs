@@ -1,52 +1,29 @@
-using FCompiler.Utils;
-
 namespace FCompiler.Semantic;
 
-public abstract record SymbolInfo(Span span);
-public record VariableInfo(Span span) : SymbolInfo(span);
-public record FunctionInfo(List<string> parameters, Span span) : SymbolInfo(span);
-
-public record Scope(string Name, Scope.ScopeType Type, Scope? Parent = null) {
-    private readonly Dictionary<string, SymbolInfo> _symbols = [];
-
-    public enum ScopeType {
+public record Scope(string name, Scope.Type type, Scope? parent = null) {
+    public enum Type {
         Global,
         Function,
-        Loop,
+        While,
         Prog
     }
 
-    public bool TryAddSymbol(string name, SymbolInfo info) {
-        if (_symbols.ContainsKey(name))
-            return false;
+    private readonly HashSet<string> _symbols = [];
 
-        _symbols[name] = info;
-        return true;
-    }
+    public bool TryAddSymbol(string name) =>
+        _symbols.Add(name);
 
-    public SymbolInfo? Lookup(string name) {
-        if (_symbols.TryGetValue(name, out var info))
-            return info;
+    public bool Contains(string name) =>
+        _symbols.Contains(name)
+            ? true
+            : parent?.Contains(name) ?? false;
 
-        return Parent?.Lookup(name);
-    }
-
-    public bool IsInLoopContext() {
+    public bool IsIn(Type scopeType) {
         var current = this;
-        while (current is not null) {
-            if (current.Type == ScopeType.Loop)
+        while (current is { type: var t }) {
+            if (t == scopeType)
                 return true;
-            current = current.Parent;
-        }
-        return false;
-    }
-
-    public bool IsInFunctionContext() {
-        var current = this;
-        while (current is not null) {
-            if (current.Type == ScopeType.Function)
-                return true;
-            current = current.Parent;
+            current = current.parent;
         }
         return false;
     }
