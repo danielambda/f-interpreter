@@ -220,6 +220,15 @@ public class Interpreter {
             };
         }));
 
+        _globalEnv.Define("abs", new BuiltinFunction("abs", args => {
+            ValidateArgsCount("abs", 1, args);
+            return args[0] switch {
+                Integer a => new Integer(Math.Abs(a.Value)),
+                Real a => new Real(Math.Abs(a.Value)),
+                _ => throw new Exception("abs requires one numeric argument")
+            };
+        }));
+
         // List operations
         _globalEnv.Define("head", new BuiltinFunction("head", args => {
             ValidateArgsCount("head", 1, args);

@@ -47,7 +47,7 @@ var examples = new[]
                 (setq result (times result i))
                 (setq i (plus i 1))))
             result))
-        
+
         (factorial 5)
         """,
         Description = "Вычисление факториала с помощью функции и цикла"
@@ -91,24 +91,24 @@ var examples = new[]
         """,
         Description = "Сравнение двух переменных"
     },
-    new 
+    new
     {
         Name = "Пример 9",
         Code = """
-        (func sqrt-newton (x tol)        
-            (prog (guess)        
-                (setq guess (div x 2.0))        
-                    (while true        
-                        (prog (new-guess)        
-                            (setq new-guess (div (plus guess (div x guess)) 2.0))        
-                                (cond (less (abs (minus new-guess guess)) tol)        
-                                    (return new-guess)        
-                                    (setq guess new-guess))))))        
+        (func sqrtNewton (x tol)
+            (prog (guess)
+                (setq guess (divide x 2.0))
+                    (while true
+                        (prog (newGuess)
+                            (setq newGuess (divide (plus guess (divide x guess)) 2.0))
+                                (cond (less (abs (minus newGuess guess)) tol)
+                                    (return newGuess)
+                                    (setq guess newGuess))))))
 
-        (sqrt-newton 2.0 0.001)
+        (sqrtNewton 2 0.001)
         """,
         Description = ""
-      
+
     }
 };
 
@@ -147,10 +147,10 @@ foreach (var example in examples)
             Right: semAst =>
             {
                 Console.WriteLine("✅ Семантический анализ пройден");
-                
+
                 // Выполнение программы
                 var result = interpreter.Interpret(semAst);
-                
+
                 // Красивый вывод результата
                 Console.WriteLine("📊 РЕЗУЛЬТАТ ВЫПОЛНЕНИЯ:");
                 PrintValue(result, 0);
@@ -165,7 +165,7 @@ foreach (var example in examples)
             Console.WriteLine($"   Внутренняя ошибка: {e.InnerException.Message}");
         }
     }
-    
+
     Console.WriteLine(new string('=', 70));
 }
 
@@ -175,7 +175,7 @@ Console.WriteLine("\n🎉 ВСЕ ПРИМЕРЫ ВЫПОЛНЕНЫ!");
 void PrintValue(Value value, int indent)
 {
     var indentStr = new string(' ', indent * 2);
-    
+
     switch (value)
     {
         case Value.Integer i:
