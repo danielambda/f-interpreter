@@ -8,6 +8,7 @@ public abstract record Value {
         public static Null Instance = new();
     }
     public record List(List<Value> Values) : Value;
+    public record Atom(string Name) : Value;
     public record Function(List<string> Parameters, Semantic.Sem.Expr Body, Environment Closure) : Value;
     public record BuiltinFunction(string Name, Func<List<Value>, Value> Implementation) : Value;
 }

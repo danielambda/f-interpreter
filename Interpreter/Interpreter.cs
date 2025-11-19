@@ -1,5 +1,7 @@
+using FCompiler.Lexer;
 using FCompiler.Parser;
 using FCompiler.Semantic;
+using FCompiler.Utils;
 using static FCompiler.Interpreter.Value;
 
 namespace FCompiler.Interpreter;
@@ -77,18 +79,15 @@ public class Interpreter {
     private Value EvaluateProg(Sem.Prog prog, Environment env) {
         var localEnv = new Environment(env);
 
-        // Initialize local variables with null
         foreach (var varIdent in prog.vars) {
             var name = varIdent.identifier.identifier.value;
             localEnv.Define(name, Null.Instance);
         }
 
-        // Execute body elements
         foreach (var elem in prog.body) {
             EvaluateElement(elem, localEnv);
         }
 
-        // Return the last expression
         return EvaluateExpr(prog.last, localEnv);
     }
 
@@ -115,7 +114,6 @@ public class Interpreter {
 
         return Null.Instance;
     }
-
 
     private Value EvaluateReturn(Sem.Return @return, Environment env) {
         var value = EvaluateExpr(@return.value, env);
@@ -159,23 +157,61 @@ public class Interpreter {
 
     private Value ConvertElementToValue(Element element) => element switch {
         Element.List list => new List(list.elements.Select(ConvertElementToValue).ToList()),
-        Element.Identifier ident => new List(new List<Value> {
-            new List(new List<Value> { new BuiltinFunction("quote", _ => Null.Instance) }),
-            ConvertElementToValue(ident)
-        }),
+        Element.Identifier ident => new Atom(ident.identifier.value),
         Element.Integer integer => new Integer(integer.integer.value),
         Element.Real real => new Real(real.real.value),
         Element.Bool @bool => new Bool(@bool.boolean.value),
         Element.Null => Null.Instance,
-        Element.SpecialForm specialForm => new List([
-            new BuiltinFunction("quote", _ => Null.Instance),
-            new List([new BuiltinFunction(specialForm.specialForm.type.ToString(), _ => Null.Instance)])
-        ]),
+        Element.SpecialForm specialForm => new Atom(specialForm.specialForm.type.ToString()),
+        Element.Quote quote => ConvertElementToValue(quote.quote),
         _ => throw new Exception($"Cannot convert element to value: {element.GetType().Name}")
     };
 
+    private Value EvaluateListAsCode(List list) {
+        try {
+            var elements = ConvertValueToListToElements(list);
+            
+            var tempAst = new Parser.Ast(elements);
+            
+            var semAst = Semantic.Analyzer.Analyze(tempAst);
+            return semAst.Match(
+                Left: error => throw new Exception($"Semantic error in eval: {error.message}"),
+                Right: semAstRight => {
+                    var evalEnv = new Environment(_globalEnv);
+                    Value result = Null.Instance;
+                    foreach (var elem in semAstRight.elements) {
+                        result = EvaluateElement(elem, evalEnv);
+                    }
+                    return result;
+                }
+            );
+        }
+        catch (Exception ex) {
+            throw new Exception($"Error in eval: {ex.Message}");
+        }
+    }
+
+    private List<Element> ConvertValueToListToElements(List list) {
+        var elements = new List<Element>();
+        
+        foreach (var value in list.Values) {
+            elements.Add(ConvertValueToElement(value));
+        }
+        
+        return elements;
+    }
+
+    private Element ConvertValueToElement(Value value) => value switch {
+        Atom atom => new Element.Identifier(new Token.Identifier(atom.Name, new Span())),
+        Integer integer => new Element.Integer(new Token.Integer(integer.Value, new Span())),
+        Real real => new Element.Real(new Token.Real(real.Value, new Span())),
+        Bool @bool => new Element.Bool(new Token.Bool(@bool.Value, new Span())),
+        Null => new Element.Null(new Token.Null(new Span())),
+        List list => new Element.List(ConvertValueToListToElements(list)),
+        _ => throw new Exception($"Cannot convert value to element: {value.GetType().Name}")
+    };
+
     private void InitializeBuiltins() {
-        // Arithmetic functions
         _globalEnv.Define("plus", new BuiltinFunction("plus", args => {
             ValidateArgsCount("plus", 2, args);
             return (args[0], args[1]) switch {
@@ -229,7 +265,6 @@ public class Interpreter {
             };
         }));
 
-        // List operations
         _globalEnv.Define("head", new BuiltinFunction("head", args => {
             ValidateArgsCount("head", 1, args);
             return args[0] switch {
@@ -256,7 +291,6 @@ public class Interpreter {
             };
         }));
 
-        // Comparisons
         _globalEnv.Define("equal", new BuiltinFunction("equal", args => {
             ValidateArgsCount("equal", 2, args);
             return new Bool(ValuesEqual(args[0], args[1]));
@@ -287,7 +321,6 @@ public class Interpreter {
             return CompareValues(args[0], args[1]) >= 0 ? new Bool(true) : new Bool(false);
         }));
 
-        // Predicates
         _globalEnv.Define("isint", new BuiltinFunction("isint", args => {
             ValidateArgsCount("isint", 1, args);
             return new Bool(args[0] is Integer);
@@ -318,7 +351,6 @@ public class Interpreter {
             return new Bool(args[0] is List);
         }));
 
-        // Logical operators
         _globalEnv.Define("and", new BuiltinFunction("and", args => {
             ValidateArgsCount("and", 2, args);
             var a = GetBoolValue(args[0]);
@@ -346,12 +378,14 @@ public class Interpreter {
             return new Bool(!a);
         }));
 
-        // Evaluator
-        _globalEnv.Define("eval", new BuiltinFunction("eval", args => {
+        _globalEnv.Define("eval", new BuiltinFunction("eval", (args) => {
             ValidateArgsCount("eval", 1, args);
-            return args[0] switch {
-                List => throw new NotImplementedException("eval for lists not implemented"),
-                _ => args[0]
+            var arg = args[0];
+            
+            return arg switch {
+                List list => EvaluateListAsCode(list),
+                Atom atom => _globalEnv.Get(atom.Name),
+                _ => arg
             };
         }));
     }
@@ -369,6 +403,7 @@ public class Interpreter {
         (Real r, Integer i) => Math.Abs(r.Value - i.Value) < double.Epsilon,
         (Bool b1, Bool b2) => b1.Value == b2.Value,
         (Null, Null) => true,
+        (Atom a1, Atom a2) => a1.Name == a2.Name,
         (List l1, List l2) => l1.Values.SequenceEqual(l2.Values, new ValueEqualityComparer()),
         _ => false
     };
