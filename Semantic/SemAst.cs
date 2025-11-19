@@ -10,8 +10,8 @@ public static class Sem {
 
     public record Ast(List<Elem> elements);
 
-    public record Setq(Identifier name, Expr body)                       : Elem;
-    public record Fun(Identifier name, List<Identifier> args, Expr body) : Elem;
+    public record Setq(Identifier name, Expr body)                               : Expr;
+    public record Fun(Identifier name, List<Identifier> args, Expr body)         : Elem;
     public record Lambda(List<Identifier> args, Expr body)                       : Expr;
     public record Prog(List<Identifier> vars, List<Elem> body, Expr last)        : Expr;
     public record Cond(Expr cond, Expr t, Expr? f = null)                        : Expr;

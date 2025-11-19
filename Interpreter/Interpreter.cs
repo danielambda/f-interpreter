@@ -1,6 +1,4 @@
-using FCompiler.Lexer;
 using FCompiler.Parser;
-using FCompiler.Utils;
 using FCompiler.Semantic;
 using static FCompiler.Interpreter.Value;
 
@@ -16,11 +14,11 @@ public class Interpreter {
 
     public Value Interpret(Sem.Ast ast) {
         Value result = Null.Instance;
-        
+
         foreach (var elem in ast.elements) {
             result = EvaluateElement(elem, _globalEnv);
         }
-        
+
         return result;
     }
 
@@ -45,30 +43,29 @@ public class Interpreter {
         };
     }
 
-    private Value EvaluateExpr(Sem.Expr expr, Environment env) {
-        return EvaluateElement(expr, env);
-    }
+    private Value EvaluateExpr(Sem.Expr expr, Environment env) =>
+        EvaluateElement(expr, env);
 
     private Value EvaluateSetq(Sem.Setq setq, Environment env) {
         var value = EvaluateExpr(setq.body, env);
         var name = setq.name.identifier.identifier.value;
-        
+
         if (env.Contains(name)) {
             env.Set(name, value);
         } else {
             env.Define(name, value);
         }
-        
+
         return value;
     }
 
     private Value EvaluateFun(Sem.Fun fun, Environment env) {
         var name = fun.name.identifier.identifier.value;
         var paramNames = fun.args.Select(a => a.identifier.identifier.value).ToList();
-        
+
         var function = new Function(paramNames, fun.body, new Environment(env));
         env.Define(name, function);
-        
+
         return function;
     }
 
@@ -79,25 +76,25 @@ public class Interpreter {
 
     private Value EvaluateProg(Sem.Prog prog, Environment env) {
         var localEnv = new Environment(env);
-        
+
         // Initialize local variables with null
         foreach (var varIdent in prog.vars) {
             var name = varIdent.identifier.identifier.value;
             localEnv.Define(name, Null.Instance);
         }
-        
+
         // Execute body elements
         foreach (var elem in prog.body) {
             EvaluateElement(elem, localEnv);
         }
-        
+
         // Return the last expression
         return EvaluateExpr(prog.last, localEnv);
     }
 
     private Value EvaluateCond(Sem.Cond cond, Environment env) {
         var condition = EvaluateExpr(cond.cond, env);
-        
+
         if (condition is Bool { Value: true }) {
             return EvaluateExpr(cond.t, env);
         } else if (cond.f != null) {
@@ -107,16 +104,16 @@ public class Interpreter {
         }
     }
 
-    private Null EvaluateWhile(Sem.While @while, Environment env) {    
-        while (EvaluateExpr(@while.cond, env) is Bool { Value: true }) {    
-            try {    
-                EvaluateExpr(@while.body, env);    
-            } catch (BreakException) {    
+    private Null EvaluateWhile(Sem.While @while, Environment env) {
+        while (EvaluateExpr(@while.cond, env) is Bool { Value: true }) {
+            try {
+                EvaluateExpr(@while.body, env);
+            } catch (BreakException) {
                 return Null.Instance;
-            }    
-        }    
-            
-        return Null.Instance;    
+            }
+        }
+
+        return Null.Instance;
     }
 
 
@@ -142,7 +139,7 @@ public class Interpreter {
         }
 
         var localEnv = new Environment(function.Closure);
-        
+
         for (int i = 0; i < function.Parameters.Count; i++) {
             localEnv.Define(function.Parameters[i], args[i]);
         }
@@ -154,33 +151,28 @@ public class Interpreter {
         }
     }
 
-    private Value EvaluateQuote(Sem.Quote quote) {
-        return ConvertElementToValue(quote.element);
-    }
+    private Value EvaluateQuote(Sem.Quote quote) =>
+        ConvertElementToValue(quote.element);
 
-    private Value EvaluateIdentifier(Sem.Identifier ident, Environment env) {
-        var name = ident.identifier.identifier.value;
-        return env.Get(name);
-    }
+    private Value EvaluateIdentifier(Sem.Identifier ident, Environment env) =>
+        env.Get(ident.identifier.identifier.value);
 
-    private Value ConvertElementToValue(Element element) {
-        return element switch {
-            Element.List list => new List(list.elements.Select(ConvertElementToValue).ToList()),
-            Element.Identifier ident => new List(new List<Value> {
-                new List(new List<Value> { new BuiltinFunction("quote", _ => Null.Instance) }),
-                ConvertElementToValue(ident)
-            }),
-            Element.Integer integer => new Integer(integer.integer.value),
-            Element.Real real => new Real(real.real.value),
-            Element.Bool @bool => new Bool(@bool.boolean.value),
-            Element.Null => Null.Instance,
-            Element.SpecialForm specialForm => new List(new List<Value> {
-                new BuiltinFunction("quote", _ => Null.Instance),
-                new List(new List<Value> { new BuiltinFunction(specialForm.specialForm.type.ToString(), _ => Null.Instance) })
-            }),
-            _ => throw new Exception($"Cannot convert element to value: {element.GetType().Name}")
-        };
-    }
+    private Value ConvertElementToValue(Element element) => element switch {
+        Element.List list => new List(list.elements.Select(ConvertElementToValue).ToList()),
+        Element.Identifier ident => new List(new List<Value> {
+            new List(new List<Value> { new BuiltinFunction("quote", _ => Null.Instance) }),
+            ConvertElementToValue(ident)
+        }),
+        Element.Integer integer => new Integer(integer.integer.value),
+        Element.Real real => new Real(real.real.value),
+        Element.Bool @bool => new Bool(@bool.boolean.value),
+        Element.Null => Null.Instance,
+        Element.SpecialForm specialForm => new List([
+            new BuiltinFunction("quote", _ => Null.Instance),
+            new List([new BuiltinFunction(specialForm.specialForm.type.ToString(), _ => Null.Instance)])
+        ]),
+        _ => throw new Exception($"Cannot convert element to value: {element.GetType().Name}")
+    };
 
     private void InitializeBuiltins() {
         // Arithmetic functions
@@ -361,35 +353,29 @@ public class Interpreter {
         }
     }
 
-    private static bool ValuesEqual(Value a, Value b) {
-        return (a, b) switch {
-            (Integer i1, Integer i2) => i1.Value == i2.Value,
-            (Real r1, Real r2) => Math.Abs(r1.Value - r2.Value) < double.Epsilon,
-            (Integer i, Real r) => Math.Abs(i.Value - r.Value) < double.Epsilon,
-            (Real r, Integer i) => Math.Abs(r.Value - i.Value) < double.Epsilon,
-            (Bool b1, Bool b2) => b1.Value == b2.Value,
-            (Null, Null) => true,
-            (List l1, List l2) => l1.Values.SequenceEqual(l2.Values, new ValueEqualityComparer()),
-            _ => false
-        };
-    }
+    private static bool ValuesEqual(Value a, Value b) => (a, b) switch {
+        (Integer i1, Integer i2) => i1.Value == i2.Value,
+        (Real r1, Real r2) => Math.Abs(r1.Value - r2.Value) < double.Epsilon,
+        (Integer i, Real r) => Math.Abs(i.Value - r.Value) < double.Epsilon,
+        (Real r, Integer i) => Math.Abs(r.Value - i.Value) < double.Epsilon,
+        (Bool b1, Bool b2) => b1.Value == b2.Value,
+        (Null, Null) => true,
+        (List l1, List l2) => l1.Values.SequenceEqual(l2.Values, new ValueEqualityComparer()),
+        _ => false
+    };
 
-    private static int CompareValues(Value a, Value b) {
-        return (a, b) switch {
-            (Integer i1, Integer i2) => i1.Value.CompareTo(i2.Value),
-            (Real r1, Real r2) => r1.Value.CompareTo(r2.Value),
-            (Integer i, Real r) => i.Value.CompareTo(r.Value),
-            (Real r, Integer i) => r.Value.CompareTo(i.Value),
-            _ => throw new Exception("Comparison requires numeric arguments")
-        };
-    }
+    private static int CompareValues(Value a, Value b) => (a, b) switch {
+        (Integer i1, Integer i2) => i1.Value.CompareTo(i2.Value),
+        (Real r1, Real r2) => r1.Value.CompareTo(r2.Value),
+        (Integer i, Real r) => i.Value.CompareTo(r.Value),
+        (Real r, Integer i) => r.Value.CompareTo(i.Value),
+        _ => throw new Exception("Comparison requires numeric arguments")
+    };
 
-    private static bool GetBoolValue(Value value) {
-        return value switch {
-            Bool b => b.Value,
-            _ => throw new Exception("Expected boolean value")
-        };
-    }
+    private static bool GetBoolValue(Value value) => value switch {
+        Bool b => b.Value,
+        _ => throw new Exception("Expected boolean value")
+    };
 
     private class ValueEqualityComparer : IEqualityComparer<Value> {
         public bool Equals(Value? x, Value? y) => ValuesEqual(x!, y!);
