@@ -4,27 +4,47 @@ using FCompiler.Semantic;
 using FCompiler.Interpreter;
 using LanguageExt;
 
+if (args is ["-i"]) {
+    Console.WriteLine("Running in interactive mode");
+    var interpreter = new Interpreter();
+
+    List<string> lines = [];
+    var line = Console.ReadLine();
+
+    while (true) {
+        if (line is null) continue;
+        line = line.TrimStart();
+
+        if (string.IsNullOrWhiteSpace(line)) {
+            var results = Interpret(interpreter, lines);
+            lines.Clear();
+
+            foreach (var res in results.Where(r => r is not null))
+                Console.WriteLine(res);
+        } else if (lines.All(string.IsNullOrWhiteSpace) && line.StartsWith(":load")) {
+            var fileToLoad = line[5..].Trim();
+            Console.WriteLine("loading file " + fileToLoad);
+            var fileContents = File.ReadLines(fileToLoad);
+
+            var results = Interpret(interpreter, lines);
+
+            foreach (var res in results.Where(r => r is not null))
+                Console.WriteLine(res);
+        } else {
+            lines.Add(line);
+        }
+
+        line = Console.ReadLine();
+    }
+}
+
 if (args is ["-f", var filePath]) {
     var lines = File.ReadLines(filePath);
 
     try {
-        var tokens = Lexer.Lex(lines).Sequence();
-        var ast = tokens.Match(
-            Left: a => throw new Exception($"Lexer error: {a}"),
-            Right: ts => new Parser(ts.ToArray()).ParseProgram()
-        );
-
-        var semAst = ast.Match(
-            Left: a => throw new Exception($"Parser error: {a}"),
-            Right: parsedAst => Analyzer.Analyze(parsedAst)
-        );
-
         var interpreter = new Interpreter();
 
-        var results = semAst.Match(
-            Left: error => [$"Semantic error: {error.message}"],
-            Right: semAst => interpreter.Interpret(semAst).Select(LispPrint)
-        );
+        var results = Interpret(interpreter, lines);
 
         foreach (var res in results.Where(r => r is not null))
             Console.WriteLine(res);
@@ -99,7 +119,7 @@ foreach (var example in examples) {
         var tokens = Lexer.Lex(example.Code.Split('\n')).Sequence();
         var ast = tokens.Match(
             Left: a => throw new Exception($"Lexer error: {a}"),
-            Right: ts => new Parser(ts.ToArray()).ParseProgram()
+            Right: ts => new Parser(ts).ParseProgram()
         );
 
         var semAst = ast.Match(
@@ -150,3 +170,23 @@ string? InListLispPrint(Value value) => value switch {
     Value.Atom a    => a.Name,
     _ => LispPrint(value),
 };
+
+IEnumerable<string> Interpret(Interpreter interpreter, IEnumerable<string> lines) {
+    var tokens = Lexer.Lex(lines).Sequence();
+    var ast = tokens.Match(
+        Left: a => throw new Exception($"Lexer error: {a}"),
+        Right: ts => new Parser(ts).ParseProgram()
+    );
+
+    var semAst = ast.Match(
+        Left: a => throw new Exception($"Parser error: {a}"),
+        Right: parsedAst => Analyzer.Analyze(parsedAst)
+    );
+
+    var results = semAst.Match(
+        Left: error => [$"Semantic error: {error.message}"],
+        Right: semAst => interpreter.Interpret(semAst).Select(LispPrint)
+    );
+
+    return results.Where(r => r is not null)!;
+}
