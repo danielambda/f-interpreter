@@ -92,4 +92,25 @@ public static class Sem {
         Identifier(var v) => v,
         _ => throw new ArgumentException($"Unknown element type: {elem.GetType().Name}")
     };
+
+    public static Span? TryGetSpan(this Elem elem) => elem switch {
+        Setq(var name, _) => name.TryGetSpan(),
+        Fun(var name, _, _) => name.TryGetSpan(),
+        Lambda(var args, var body) =>
+            args.FirstOrDefault()?.TryGetSpan() ?? body.TryGetSpan(),
+        Prog(var vars, var args, var last) =>
+            vars.FirstOrDefault()?.TryGetSpan() ?? args.FirstOrDefault()?.TryGetSpan() ?? last.TryGetSpan(),
+        Cond(var cond, var t, var f) => cond.TryGetSpan() ?? t.TryGetSpan() ?? f?.TryGetSpan(),
+        While(var cond, var body) => cond.TryGetSpan() ?? body.TryGetSpan(),
+        Return(var value) => value.TryGetSpan(),
+        Break => null,
+        FunApp(var fun, var args) => fun.TryGetSpan() ?? args.FirstOrDefault()?.TryGetSpan(),
+        Quote(var value) => null,
+        Integer(var v) => v.integer.span,
+        Real(var v) => v.real.span,
+        Bool(var v) => v.boolean.span,
+        Null(var v) => v.@null.span,
+        Identifier(var v) => v.identifier.span,
+        _ => throw new ArgumentException($"Unknown element type: {elem.GetType().Name}")
+    };
 }

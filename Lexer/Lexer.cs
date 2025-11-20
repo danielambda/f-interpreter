@@ -77,7 +77,7 @@ public class Lexer {
                 continue;
             }
 
-            if (char.IsLetter(Current)) {
+            if (char.IsLetter(Current) || Current is '_') {
                 yield return LexIdentifier();
                 continue;
             }
@@ -94,7 +94,9 @@ public class Lexer {
 
     private Either<LexerError, Token> LexIdentifier() {
         var idBuilder = new StringBuilder();
-        while (char.IsLetter(Current) || char.IsDigit(Current)) {
+        while (  char.IsLetter(Current)
+              || char.IsDigit(Current)
+              || Current is '_' or '-' or '!' or '?') {
             idBuilder.Append(Current);
             Advance();
         }

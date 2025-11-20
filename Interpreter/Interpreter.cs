@@ -14,36 +14,29 @@ public class Interpreter {
         InitializeBuiltins();
     }
 
-    public Value Interpret(Sem.Ast ast) {
-        Value result = Null.Instance;
+    public IEnumerable<Value> Interpret(Sem.Ast ast) =>
+        ast.elements.Map(Interpret);
 
-        foreach (var elem in ast.elements) {
-            result = EvaluateElement(elem, _globalEnv);
-        }
+    public Value Interpret(Sem.Elem elem) => EvaluateElement(elem, _globalEnv);
 
-        return result;
-    }
-
-    private Value EvaluateElement(Sem.Elem elem, Environment env) {
-        return elem switch {
-            Sem.Setq setq => EvaluateSetq(setq, env),
-            Sem.Fun fun => EvaluateFun(fun, env),
-            Sem.Lambda lambda => EvaluateLambda(lambda, env),
-            Sem.Prog prog => EvaluateProg(prog, env),
-            Sem.Cond cond => EvaluateCond(cond, env),
-            Sem.While @while => EvaluateWhile(@while, env),
-            Sem.Return @return => EvaluateReturn(@return, env),
-            Sem.Break => throw new BreakException(),
-            Sem.FunApp funApp => EvaluateFunApp(funApp, env),
-            Sem.Quote quote => EvaluateQuote(quote),
-            Sem.Integer integer => new Integer(integer.integer.integer.value),
-            Sem.Real real => new Real(real.real.real.value),
-            Sem.Bool @bool => new Bool(@bool.boolean.boolean.value),
-            Sem.Null => Null.Instance,
-            Sem.Identifier ident => EvaluateIdentifier(ident, env),
-            _ => throw new Exception($"Unknown element type: {elem.GetType().Name}")
-        };
-    }
+    private Value EvaluateElement(Sem.Elem elem, Environment env) => elem switch {
+        Sem.Setq setq => EvaluateSetq(setq, env),
+        Sem.Fun fun => EvaluateFun(fun, env),
+        Sem.Lambda lambda => EvaluateLambda(lambda, env),
+        Sem.Prog prog => EvaluateProg(prog, env),
+        Sem.Cond cond => EvaluateCond(cond, env),
+        Sem.While @while => EvaluateWhile(@while, env),
+        Sem.Return @return => EvaluateReturn(@return, env),
+        Sem.Break => throw new BreakException(),
+        Sem.FunApp funApp => EvaluateFunApp(funApp, env),
+        Sem.Quote quote => EvaluateQuote(quote),
+        Sem.Integer integer => new Integer(integer.integer.integer.value),
+        Sem.Real real => new Real(real.real.real.value),
+        Sem.Bool @bool => new Bool(@bool.boolean.boolean.value),
+        Sem.Null => Null.Instance,
+        Sem.Identifier ident => EvaluateIdentifier(ident, env),
+        _ => throw new Exception($"Unknown element type: {elem.GetType().Name}")
+    };
 
     private Value EvaluateExpr(Sem.Expr expr, Environment env) =>
         EvaluateElement(expr, env);
@@ -63,7 +56,7 @@ public class Interpreter {
 
     private Value EvaluateFun(Sem.Fun fun, Environment env) {
         var name = fun.name.identifier.identifier.value;
-        var paramNames = fun.args.Select(a => a.identifier.identifier.value).ToList();
+        var paramNames = fun.args.Map(a => a.identifier.identifier.value).ToList();
 
         var function = new Function(paramNames, fun.body, new Environment(env));
         env.Define(name, function);
@@ -71,10 +64,11 @@ public class Interpreter {
         return function;
     }
 
-    private Value EvaluateLambda(Sem.Lambda lambda, Environment env) {
-        var paramNames = lambda.args.Select(a => a.identifier.identifier.value).ToList();
-        return new Function(paramNames, lambda.body, new Environment(env));
-    }
+    private Function EvaluateLambda(Sem.Lambda lambda, Environment env) => new Function(
+        lambda.args.Map(a => a.identifier.identifier.value).ToList(),
+        lambda.body,
+        new Environment(env)
+    );
 
     private Value EvaluateProg(Sem.Prog prog, Environment env) {
         var localEnv = new Environment(env);
@@ -92,11 +86,13 @@ public class Interpreter {
     }
 
     private Value EvaluateCond(Sem.Cond cond, Environment env) {
-        var condition = EvaluateExpr(cond.cond, env);
+        if (EvaluateExpr(cond.cond, env) is not Bool(var condition)) {
+            throw new Exception("cond expects a bool as the first argument");
+        }
 
-        if (condition is Bool { Value: true }) {
+        if (condition) {
             return EvaluateExpr(cond.t, env);
-        } else if (cond.f != null) {
+        } else if (cond.f is not null) {
             return EvaluateExpr(cond.f, env);
         } else {
             return Null.Instance;
@@ -108,17 +104,15 @@ public class Interpreter {
             try {
                 EvaluateExpr(@while.body, env);
             } catch (BreakException) {
-                return Null.Instance;
+                break;
             }
         }
 
         return Null.Instance;
     }
 
-    private Value EvaluateReturn(Sem.Return @return, Environment env) {
-        var value = EvaluateExpr(@return.value, env);
-        throw new ReturnException(value);
-    }
+    private Value EvaluateReturn(Sem.Return @return, Environment env) =>
+        throw new ReturnException(EvaluateExpr(@return.value, env));
 
     private Value EvaluateFunApp(Sem.FunApp funApp, Environment env) {
         var function = EvaluateExpr(funApp.fun, env);
@@ -127,7 +121,7 @@ public class Interpreter {
         return function switch {
             BuiltinFunction builtin => builtin.Implementation(args),
             Function userFunc => CallUserFunction(userFunc, args),
-            _ => throw new Exception("Attempt to call non-function")
+            _ => throw new Exception($"Attempt to call non-function at {funApp.TryGetSpan()?.PrettyPrint()}")
         };
     }
 
@@ -138,8 +132,8 @@ public class Interpreter {
 
         var localEnv = new Environment(function.Closure);
 
-        for (int i = 0; i < function.Parameters.Count; i++) {
-            localEnv.Define(function.Parameters[i], args[i]);
+        foreach (var (param, arg) in function.Parameters.Zip(args)) {
+            localEnv.Define(param, arg);
         }
 
         try {
@@ -153,7 +147,8 @@ public class Interpreter {
         ConvertElementToValue(quote.element);
 
     private Value EvaluateIdentifier(Sem.Identifier ident, Environment env) =>
-        env.Get(ident.identifier.identifier.value);
+        env.Get(ident.identifier.identifier.value)
+            ?? throw new Exception($"Unknown identifier: {ident.identifier.identifier.value} at {ident.identifier.identifier.span}");
 
     private Value ConvertElementToValue(Element element) => element switch {
         Element.List list => new List(list.elements.Select(ConvertElementToValue).ToList()),
@@ -170,10 +165,10 @@ public class Interpreter {
     private Value EvaluateListAsCode(List list) {
         try {
             var elements = ConvertValueToListToElements(list);
-            
-            var tempAst = new Parser.Ast(elements);
-            
-            var semAst = Semantic.Analyzer.Analyze(tempAst);
+
+            var tempAst = new Ast(elements);
+
+            var semAst = Analyzer.Analyze(tempAst);
             return semAst.Match(
                 Left: error => throw new Exception($"Semantic error in eval: {error.message}"),
                 Right: semAstRight => {
@@ -191,15 +186,8 @@ public class Interpreter {
         }
     }
 
-    private List<Element> ConvertValueToListToElements(List list) {
-        var elements = new List<Element>();
-        
-        foreach (var value in list.Values) {
-            elements.Add(ConvertValueToElement(value));
-        }
-        
-        return elements;
-    }
+    private List<Element> ConvertValueToListToElements(List list) =>
+        list.Values.Map(ConvertValueToElement).ToList();
 
     private Element ConvertValueToElement(Value value) => value switch {
         Atom atom => new Element.Identifier(new Token.Identifier(atom.Name, new Span())),
@@ -212,185 +200,205 @@ public class Interpreter {
     };
 
     private void InitializeBuiltins() {
-        _globalEnv.Define("plus", new BuiltinFunction("plus", args => {
-            ValidateArgsCount("plus", 2, args);
-            return (args[0], args[1]) switch {
-                (Integer a, Integer b) => new Integer(a.Value + b.Value),
-                (Real a, Real b) => new Real(a.Value + b.Value),
-                (Integer a, Real b) => new Real(a.Value + b.Value),
-                (Real a, Integer b) => new Real(a.Value + b.Value),
-                _ => throw new Exception("plus requires numeric arguments")
-            };
-        }));
+        AddBuiltinFunctionToGlobalEnv("plus", args =>
+            args is not [var x, var y]
+                ? throw new Exception($"plus expects 2 arguments, got {args.Count}")
+                : (x, y) switch {
+                    (Integer a, Integer b) => new Integer(a.Value + b.Value),
+                    (Real a, Real b) => new Real(a.Value + b.Value),
+                    (Integer a, Real b) => new Real(a.Value + b.Value),
+                    (Real a, Integer b) => new Real(a.Value + b.Value),
+                    _ => throw new Exception("plus requires numeric arguments")
+                }
+        );
 
-        _globalEnv.Define("minus", new BuiltinFunction("minus", args => {
-            ValidateArgsCount("minus", 2, args);
-            return (args[0], args[1]) switch {
-                (Integer a, Integer b) => new Integer(a.Value - b.Value),
-                (Real a, Real b) => new Real(a.Value - b.Value),
-                (Integer a, Real b) => new Real(a.Value - b.Value),
-                (Real a, Integer b) => new Real(a.Value - b.Value),
-                _ => throw new Exception("minus requires numeric arguments")
-            };
-        }));
+        AddBuiltinFunctionToGlobalEnv("minus", args =>
+            args is not [var x, var y]
+                ? throw new Exception($"minus expects 2 arguments, got {args.Count}")
+                : (x, y) switch {
+                    (Integer a, Integer b) => new Integer(a.Value - b.Value),
+                    (Real a, Real b) => new Real(a.Value - b.Value),
+                    (Integer a, Real b) => new Real(a.Value - b.Value),
+                    (Real a, Integer b) => new Real(a.Value - b.Value),
+                    _ => throw new Exception("minus requires numeric arguments")
+                }
+        );
 
-        _globalEnv.Define("times", new BuiltinFunction("times", args => {
-            ValidateArgsCount("times", 2, args);
-            return (args[0], args[1]) switch {
-                (Integer a, Integer b) => new Integer(a.Value * b.Value),
-                (Real a, Real b) => new Real(a.Value * b.Value),
-                (Integer a, Real b) => new Real(a.Value * b.Value),
-                (Real a, Integer b) => new Real(a.Value * b.Value),
-                _ => throw new Exception("times requires numeric arguments")
-            };
-        }));
+        AddBuiltinFunctionToGlobalEnv("times", args =>
+            args is not [var x, var y]
+                ? throw new Exception($"times expects 2 arguments, got {args.Count}")
+                : (x, y) switch {
+                    (Integer a, Integer b) => new Integer(a.Value * b.Value),
+                    (Real a, Real b) => new Real(a.Value * b.Value),
+                    (Integer a, Real b) => new Real(a.Value * b.Value),
+                    (Real a, Integer b) => new Real(a.Value * b.Value),
+                    _ => throw new Exception("times requires numeric arguments")
+                }
+        );
 
-        _globalEnv.Define("divide", new BuiltinFunction("divide", args => {
-            ValidateArgsCount("divide", 2, args);
-            return (args[0], args[1]) switch {
-                (Integer a, Integer b) when b.Value != 0 => new Integer(a.Value / b.Value),
-                (Real a, Real b) when b.Value != 0 => new Real(a.Value / b.Value),
-                (Integer a, Real b) when b.Value != 0 => new Real(a.Value / b.Value),
-                (Real a, Integer b) when b.Value != 0 => new Real(a.Value / b.Value),
-                _ => throw new Exception("divide requires numeric arguments and non-zero divisor")
-            };
-        }));
+        AddBuiltinFunctionToGlobalEnv("divide", args =>
+            args is not [var x, var y]
+                ? throw new Exception($"divide expects 2 arguments, got {args.Count}")
+                : (x, y) switch {
+                    (Integer a, Integer b) when b.Value != 0 => new Integer(a.Value / b.Value),
+                    (Real a, Real b) when b.Value != 0 => new Real(a.Value / b.Value),
+                    (Integer a, Real b) when b.Value != 0 => new Real(a.Value / b.Value),
+                    (Real a, Integer b) when b.Value != 0 => new Real(a.Value / b.Value),
+                    _ => throw new Exception("divide requires numeric arguments and non-zero divisor")
+                }
+        );
 
-        _globalEnv.Define("abs", new BuiltinFunction("abs", args => {
-            ValidateArgsCount("abs", 1, args);
-            return args[0] switch {
-                Integer a => new Integer(Math.Abs(a.Value)),
-                Real a => new Real(Math.Abs(a.Value)),
-                _ => throw new Exception("abs requires one numeric argument")
-            };
-        }));
+        AddBuiltinFunctionToGlobalEnv("abs", args =>
+            args is not [var x]
+                ? throw new Exception($"abs expects 1 arguments, got {args.Count}")
+                : x switch {
+                    Integer a => new Integer(Math.Abs(a.Value)),
+                    Real a => new Real(Math.Abs(a.Value)),
+                    _ => throw new Exception("abs requires one numeric argument")
+                }
+        );
 
-        _globalEnv.Define("head", new BuiltinFunction("head", args => {
-            ValidateArgsCount("head", 1, args);
-            return args[0] switch {
-                List { Values: [var first, ..] } => first,
-                List list when list.Values.Count == 0 => throw new Exception("head called on empty list"),
-                _ => throw new Exception("head requires a list argument")
-            };
-        }));
+        AddBuiltinFunctionToGlobalEnv("head", args =>
+            args is not [var x]
+                ? throw new Exception($"head expects 1 arguments, got {args.Count}")
+                : x switch {
+                    List { Values: [var first, ..] } => first,
+                    List { Values: [] } => throw new Exception("head called on empty list"),
+                    _ => throw new Exception("head requires a list argument")
+                }
+        );
 
-        _globalEnv.Define("tail", new BuiltinFunction("tail", args => {
-            ValidateArgsCount("tail", 1, args);
-            return args[0] switch {
-                List { Values: [_, ..var rest] } => new List(rest),
-                List list when list.Values.Count == 0 => throw new Exception("tail called on empty list"),
-                _ => throw new Exception("tail requires a list argument")
-            };
-        }));
+        AddBuiltinFunctionToGlobalEnv("tail", args =>
+            args is not [var x]
+                ? throw new Exception($"tail expects 1 arguments, got {args.Count}")
+                : x switch {
+                    List { Values: [_, ..var rest] } => new List(rest),
+                    List { Values: [] } => throw new Exception("tail called on empty list"),
+                    _ => throw new Exception("tail requires a list argument")
+                }
+        );
 
-        _globalEnv.Define("cons", new BuiltinFunction("cons", args => {
-            ValidateArgsCount("cons", 2, args);
-            return args[1] switch {
-                List list => new List(new List<Value> { args[0] }.Concat(list.Values).ToList()),
-                _ => throw new Exception("cons requires a list as second argument")
-            };
-        }));
+        AddBuiltinFunctionToGlobalEnv("cons", args =>
+            args is not [var head, var tail]
+                ? throw new Exception($"cons expects 2 argumenta, got {args.Count}")
+                : tail switch {
+                    List list => new List([head, ..list.Values]),
+                    _ => throw new Exception("cons requires a list as second argument")
+                }
+        );
 
-        _globalEnv.Define("equal", new BuiltinFunction("equal", args => {
-            ValidateArgsCount("equal", 2, args);
-            return new Bool(ValuesEqual(args[0], args[1]));
-        }));
+        AddBuiltinFunctionToGlobalEnv("equal", args =>
+            args is not [var a, var b]
+                ? throw new Exception($"equal expects 2 arguments, got {args.Count}")
+                : new Bool(ValuesEqual(a, b))
+        );
 
-        _globalEnv.Define("nonequal", new BuiltinFunction("nonequal", args => {
-            ValidateArgsCount("nonequal", 2, args);
-            return new Bool(!ValuesEqual(args[0], args[1]));
-        }));
+        AddBuiltinFunctionToGlobalEnv("nonequal", args =>
+            args is not [var a, var b]
+                ? throw new Exception($"nonequal expects 2 arguments, got {args.Count}")
+                : new Bool(!ValuesEqual(a, b))
+        );
 
-        _globalEnv.Define("less", new BuiltinFunction("less", args => {
-            ValidateArgsCount("less", 2, args);
-            return CompareValues(args[0], args[1]) < 0 ? new Bool(true) : new Bool(false);
-        }));
+        AddBuiltinFunctionToGlobalEnv("less", args =>
+            args is not [var a, var b]
+                ? throw new Exception($"less expects 2 arguments, got {args.Count}")
+                : new Bool(CompareValues(a, b) < 0)
+        );
 
-        _globalEnv.Define("lesseq", new BuiltinFunction("lesseq", args => {
-            ValidateArgsCount("lesseq", 2, args);
-            return CompareValues(args[0], args[1]) <= 0 ? new Bool(true) : new Bool(false);
-        }));
+        AddBuiltinFunctionToGlobalEnv("lesseq", args =>
+            args is not [var a, var b]
+                ? throw new Exception($"lesseq expects 2 arguments, got {args.Count}")
+                : new Bool(CompareValues(a, b) <= 0)
+        );
 
-        _globalEnv.Define("greater", new BuiltinFunction("greater", args => {
-            ValidateArgsCount("greater", 2, args);
-            return CompareValues(args[0], args[1]) > 0 ? new Bool(true) : new Bool(false);
-        }));
+        AddBuiltinFunctionToGlobalEnv("greater", args =>
+            args is not [var a, var b]
+                ? throw new Exception($"greater expects 2 arguments, got {args.Count}")
+                : new Bool(CompareValues(a, b) > 0)
+        );
 
-        _globalEnv.Define("greatereq", new BuiltinFunction("greatereq", args => {
-            ValidateArgsCount("greatereq", 2, args);
-            return CompareValues(args[0], args[1]) >= 0 ? new Bool(true) : new Bool(false);
-        }));
+        AddBuiltinFunctionToGlobalEnv("greatereq", args =>
+            args is not [var a, var b]
+                ? throw new Exception($"greatereq expects 2 arguments, got {args.Count}")
+                : new Bool(CompareValues(a, b) >= 0)
+        );
 
-        _globalEnv.Define("isint", new BuiltinFunction("isint", args => {
-            ValidateArgsCount("isint", 1, args);
-            return new Bool(args[0] is Integer);
-        }));
+        AddBuiltinFunctionToGlobalEnv("isint", args =>
+            args is not [var x]
+                ? throw new Exception($"isint expects 1 argument, got {args.Count}")
+                : new Bool(x is Integer)
+        );
 
-        _globalEnv.Define("isreal", new BuiltinFunction("isreal", args => {
-            ValidateArgsCount("isreal", 1, args);
-            return new Bool(args[0] is Real);
-        }));
+        AddBuiltinFunctionToGlobalEnv("isreal", args =>
+            args is not [var x]
+                ? throw new Exception($"isreal expects 1 argument, got {args.Count}")
+                : new Bool(x is Real)
+        );
 
-        _globalEnv.Define("isbool", new BuiltinFunction("isbool", args => {
-            ValidateArgsCount("isbool", 1, args);
-            return new Bool(args[0] is Bool);
-        }));
+        AddBuiltinFunctionToGlobalEnv("isbool", args =>
+            args is not [var x]
+                ? throw new Exception($"isbool expects 1 argument, got {args.Count}")
+                : new Bool(x is Bool)
+        );
 
-        _globalEnv.Define("isnull", new BuiltinFunction("isnull", args => {
-            ValidateArgsCount("isnull", 1, args);
-            return new Bool(args[0] is Null);
-        }));
+        AddBuiltinFunctionToGlobalEnv("isnull", args =>
+            args is not [var x]
+                ? throw new Exception($"isnull expects 1 argument, got {args.Count}")
+                : new Bool(x is Null)
+        );
 
-        _globalEnv.Define("isatom", new BuiltinFunction("isatom", args => {
-            ValidateArgsCount("isatom", 1, args);
-            return new Bool(args[0] is not List);
-        }));
+        AddBuiltinFunctionToGlobalEnv("isatom", args =>
+            args is not [var x]
+                ? throw new Exception($"isatom expects 1 argument, got {args.Count}")
+                : new Bool(x is Atom)
+        );
 
-        _globalEnv.Define("islist", new BuiltinFunction("islist", args => {
-            ValidateArgsCount("islist", 1, args);
-            return new Bool(args[0] is List);
-        }));
+        AddBuiltinFunctionToGlobalEnv("islist", args =>
+            args is not [var x]
+                ? throw new Exception($"islist expects 1 argument, got {args.Count}")
+                : new Bool(x is List)
+        );
 
-        _globalEnv.Define("and", new BuiltinFunction("and", args => {
-            ValidateArgsCount("and", 2, args);
-            var a = GetBoolValue(args[0]);
-            var b = GetBoolValue(args[1]);
-            return new Bool(a && b);
-        }));
+        AddBuiltinFunctionToGlobalEnv("and", args =>
+            args is not [var a, var b]
+                ? throw new Exception($"and expects 2 arguments, got {args.Count}")
+                : new Bool(GetBoolValue(a) && GetBoolValue(b))
+        );
 
-        _globalEnv.Define("or", new BuiltinFunction("or", args => {
-            ValidateArgsCount("or", 2, args);
-            var a = GetBoolValue(args[0]);
-            var b = GetBoolValue(args[1]);
-            return new Bool(a || b);
-        }));
+        AddBuiltinFunctionToGlobalEnv("or", args =>
+            args is not [var a, var b]
+                ? throw new Exception($"or expects 2 arguments, got {args.Count}")
+                : new Bool(GetBoolValue(a) || GetBoolValue(b))
+        );
 
-        _globalEnv.Define("xor", new BuiltinFunction("xor", args => {
-            ValidateArgsCount("xor", 2, args);
-            var a = GetBoolValue(args[0]);
-            var b = GetBoolValue(args[1]);
-            return new Bool(a != b);
-        }));
+        AddBuiltinFunctionToGlobalEnv("xor", args =>
+            args is not [var a, var b]
+                ? throw new Exception($"xor expects 2 arguments, got {args.Count}")
+                : new Bool(GetBoolValue(a) != GetBoolValue(b))
+        );
 
-        _globalEnv.Define("not", new BuiltinFunction("not", args => {
-            ValidateArgsCount("not", 1, args);
-            var a = GetBoolValue(args[0]);
-            return new Bool(!a);
-        }));
+        AddBuiltinFunctionToGlobalEnv("not", args =>
+            args is not [var a]
+                ? throw new Exception($"not expects 1 argument, got {args.Count}")
+                : new Bool(!GetBoolValue(a))
+        );
 
-        _globalEnv.Define("eval", new BuiltinFunction("eval", (args) => {
-            ValidateArgsCount("eval", 1, args);
-            var arg = args[0];
-            
-            return arg switch {
-                List list => EvaluateListAsCode(list),
-                Atom atom => _globalEnv.Get(atom.Name),
-                _ => arg
-            };
-        }));
+        AddBuiltinFunctionToGlobalEnv("eval", args =>
+            args is not [var x]
+                ? throw new Exception($"eval expects 1 argument, got {args.Count}")
+                : x switch {
+                    List list => EvaluateListAsCode(list),
+                    Atom atom => _globalEnv.Get(atom.Name)
+                        ?? throw new Exception($"Unknown identifier: {atom.Name}"),
+                    _ => x
+                }
+        );
     }
 
-    private static void ValidateArgsCount(string functionName, int expected, List<Value> args) {
+    private void AddBuiltinFunctionToGlobalEnv(string name, Func<List<Value>, Value> func) =>
+        _globalEnv.Define(name, new BuiltinFunction(name, func));
+
+    private static void ValidateArgsCounta(string functionName, int expected, List<Value> args) {
         if (args.Count != expected) {
             throw new Exception($"{functionName} expects {expected} arguments, got {args.Count}");
         }

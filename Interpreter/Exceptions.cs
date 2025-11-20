@@ -1,12 +1,7 @@
 namespace FCompiler.Interpreter;
 
-public class ReturnException : Exception {
-    public Value Value { get; }
-    
-    public ReturnException(Value value) {
-        Value = value;
-    }
+public class ReturnException(Value value) : Exception {
+    public Value Value { get; } = value;
 }
 
-public class BreakException : Exception {
-}
+public class BreakException : Exception;
