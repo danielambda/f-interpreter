@@ -4,19 +4,22 @@ using System.Text;
 namespace FCompiler.Parser;
 
 public static class PrettyPrinter {
-    public static string PrettyPrint(this Ast ast) =>
+    public static string Format(this Ast ast) =>
         string.Join(
             '\n',
-            ast.elements.Select(e => e.PrettyPrint())
+            ast.elements.Map(e => e.Format())
         );
 
-    public static string PrettyPrint(this Element element) =>
-        new StringBuilder().AppendElement(element, 0, "", "").ToString().TrimEnd();
+    public static string Format(this Element element) =>
+        new StringBuilder()
+            .AppendElement(element, 0, "", "")
+            .ToString()
+            .TrimEnd();
 
     private static string PrettyPrintList(List<Element> elements, int depth) => Offset(depth) + (elements switch {
         [] => "Empty List",
         _ => $"List:\n{string.Join("\n", elements.Select((e, i) =>
-              (i == elements.Count - 1 ? "└── " : "├── ") + e.PrettyPrint().TrimStart()))}"
+              (i == elements.Count - 1 ? "└── " : "├── ") + e.Format().TrimStart()))}"
     });
 
     private static string Offset(int depth) => new string(' ', depth * 4);

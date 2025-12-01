@@ -1,5 +1,6 @@
 ﻿using FCompiler.Interpreter;
 using FCompiler.Lexer;
+using FCompiler.Optimizations;
 using FCompiler.Parser;
 using FCompiler.Printing;
 using FCompiler.Semantic;
@@ -23,6 +24,48 @@ CliOptions.Parse(args).Match(
         }
     }
 );
+
+void RunInterpret(InterpretOpts opts) {
+    var lines = File.ReadLines(opts.Filename);
+
+    try {
+        var interpreter = new Interpreter();
+
+        var tokens = Lexer.Lex(lines).Sequence();
+        var ast = tokens.Match(
+            Left: error => throw new Exception($"Lexer error: {error}"),
+            Right: Parser.Parse
+        );
+
+        var semAst = ast.Match(
+            Left: error => throw new Exception($"Parser error: {error}"),
+            Right: Analyzer.Analyze
+        );
+
+        if (opts.DisableOptimizations is false) {
+            semAst = semAst.Map(Optimizer.Optimize);
+        }
+
+        var resultValues = semAst.Match(
+            Left: error => throw new Exception($"Semantic error: {error.message}"),
+            Right: sa => {
+                if (opts.DumpOptimizedAst) {
+                    Console.WriteLine("------- OPTIMIZED AST -------");
+                    Console.WriteLine(sa.ToAst().Format());
+                    Console.WriteLine("-----------------------------");
+                }
+                return interpreter.Interpret(sa);
+            }
+        );
+
+        var results = resultValues.Map(LispPrinter.FormatValue).Where(v => v is not null);
+        foreach (var res in results) {
+            Console.WriteLine(res);
+        }
+    } catch (Exception e) {
+        Console.WriteLine($"Error: {e.Message}");
+    }
+}
 
 void RunRepl(ReplOpts opts) {
     var interpreter = new Interpreter();
@@ -57,6 +100,7 @@ void RunRepl(ReplOpts opts) {
                     },
                     Right: parsedAst => {
                         var semAst = Analyzer.Analyze(parsedAst);
+
                         var resultValues = semAst.Match(
                             Left: error => throw new Exception($"Semantic error: {error.message}"),
                             Right: interpreter.Interpret
@@ -108,37 +152,6 @@ void RunRepl(ReplOpts opts) {
             Console.WriteLine(expeption.Message);
         }
         Console.WriteLine();
-    }
-}
-
-void RunInterpret(InterpretOpts opts) {
-    var lines = File.ReadLines(opts.Filename);
-
-    try {
-        var interpreter = new Interpreter();
-
-        var tokens = Lexer.Lex(lines).Sequence();
-        var ast = tokens.Match(
-            Left: error => throw new Exception($"Lexer error: {error}"),
-            Right: Parser.Parse
-        );
-
-        var semAst = ast.Match(
-            Left: error => throw new Exception($"Parser error: {error}"),
-            Right: Analyzer.Analyze
-        );
-
-        var resultValues = semAst.Match(
-            Left: error => throw new Exception($"Semantic error: {error.message}"),
-            Right: interpreter.Interpret
-        );
-
-        var results = resultValues.Map(LispPrinter.FormatValue).Where(v => v is not null);
-        foreach (var res in results) {
-            Console.WriteLine(res);
-        }
-    } catch (Exception e) {
-        Console.WriteLine($"Error: {e.Message}");
     }
 }
 

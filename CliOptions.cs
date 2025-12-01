@@ -20,10 +20,6 @@ public class InterpretOpts {
 
 [Verb("repl", HelpText = "Launch interactive REPL")]
 public class ReplOpts {
-    [Option("no-optimize", Required = false,
-        HelpText = "Disable optimizations")]
-    public bool DisableOptimizations { get; init; } = false;
-
     [Option("files", Separator = ' ',
         HelpText = "Files to evaluate before entering the REPL.")]
     public IEnumerable<string> Filenames { get; init; } = [];
