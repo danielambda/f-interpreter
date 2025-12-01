@@ -1,3 +1,5 @@
+using FCompiler.Utils;
+
 namespace FCompiler.Interpreter;
 
 public class Environment {
@@ -16,20 +18,20 @@ public class Environment {
         _symbols[name] = value;
     }
 
-    public void Set(string name, Value value) {
+    public void Set(string name, Value value, Span? span = null) {
         if (_symbols.ContainsKey(name)) {
             _symbols[name] = value;
         } else if (_parent is not null) {
-            _parent.Set(name, value);
+            _parent.Set(name, value, span);
         } else {
-            throw new Exception($"Undefined variable: {name}");
+            throw new Exception($"Undefined variable: {name} at {span?.PrettyPrint()}");
         }
     }
 
-    public Value? Get(string name) =>
+    public Value Get(string name, Span? span = null) =>
         _symbols.TryGetValue(name, out var value)
             ? value
-            : _parent?.Get(name) ?? throw new Exception($"Undefined variable: {name}");
+            : _parent?.Get(name, span) ?? throw new Exception($"Undefined variable: {name} at {span?.PrettyPrint()}");
 
     public bool Contains(string name)
         => _symbols.ContainsKey(name)

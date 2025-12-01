@@ -40,12 +40,12 @@ public static class Sem {
         Fun(var name, var args, var body) => new Element.List([
             new Element.SpecialForm(new Token.SpecialForm(Token.SpecialForm.Type.Func, new Span())),
             name.ToElement(),
-            ..args.Map(ToElement),
+            new Element.List(args.Map(ToElement).ToList()),
             body.ToElement(),
         ]),
         Lambda(var args, var body) => new Element.List([
             new Element.SpecialForm(new Token.SpecialForm(Token.SpecialForm.Type.Lambda, new Span())),
-            ..args.Map(ToElement),
+            new Element.List(args.Map(ToElement).ToList()),
             body.ToElement(),
         ]),
         Prog(var vars, var args, var last) => new Element.List([

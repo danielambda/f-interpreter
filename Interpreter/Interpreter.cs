@@ -46,7 +46,7 @@ public class Interpreter {
         var name = setq.name.identifier.identifier.value;
 
         if (env.Contains(name)) {
-            env.Set(name, value);
+            env.Set(name, value, setq.name.identifier.identifier.span);
         } else {
             env.Define(name, value);
         }
@@ -147,7 +147,7 @@ public class Interpreter {
         ConvertElementToValue(quote.element);
 
     private Value EvaluateIdentifier(Sem.Identifier ident, Environment env) =>
-        env.Get(ident.identifier.identifier.value)
+        env.Get(ident.identifier.identifier.value, ident.identifier.identifier.span)
             ?? throw new Exception($"Unknown identifier: {ident.identifier.identifier.value} at {ident.identifier.identifier.span}");
 
     private Value ConvertElementToValue(Element element) => element switch {

@@ -50,9 +50,9 @@ void RunInterpret(InterpretOpts opts) {
             Left: error => throw new Exception($"Semantic error: {error.message}"),
             Right: sa => {
                 if (opts.DumpOptimizedAst) {
-                    Console.WriteLine("------- OPTIMIZED AST -------");
+                    Console.WriteLine("--------------- OPTIMIZED AST ---------------");
                     Console.WriteLine(sa.ToAst().Format());
-                    Console.WriteLine("-----------------------------");
+                    Console.WriteLine("---------------------------------------------");
                 }
                 return interpreter.Interpret(sa);
             }

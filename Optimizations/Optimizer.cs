@@ -26,9 +26,15 @@ public class Optimizer {
         CollectFunctionDefinitions(_ast.elements);
         CollectVariableUsage(_ast.elements);
 
-        var optimizedElements = _ast.elements.Select(OptimizeElement).ToList();
+        var optimizedElements = _ast.elements;
 
         optimizedElements = RemoveUnusedDecls(optimizedElements);
+        optimizedElements = InlineFunctions(optimizedElements);
+        optimizedElements = InlineFunctions(optimizedElements);
+        optimizedElements = InlineFunctions(optimizedElements);
+        optimizedElements = InlineFunctions(optimizedElements);
+        optimizedElements = InlineFunctions(optimizedElements);
+        optimizedElements = InlineFunctions(optimizedElements);
         optimizedElements = InlineFunctions(optimizedElements);
 
         _functions.Clear();
@@ -37,7 +43,8 @@ public class Optimizer {
         CollectVariableUsage(optimizedElements);
 
         optimizedElements = RemoveUnusedDecls(optimizedElements);
-        optimizedElements = optimizedElements.Select(OptimizeElement).ToList();
+
+        optimizedElements = TryOptimizeArithmetic(optimizedElements);
 
         return new Sem.Ast(optimizedElements);
     }
@@ -46,6 +53,8 @@ public class Optimizer {
         foreach (var element in elements) {
             if (element is Sem.Fun(var funcName, var paramList, var body)) {
                 _functions[funcName.identifier.identifier.value] = new FunInfo(paramList, body);
+            } else if (element is Sem.Setq(var funcNameL, Sem.Lambda(var paramListL, var bodyL))) {
+                _functions[funcNameL.identifier.identifier.value] = new FunInfo(paramListL, bodyL);
             }
         }
     }
@@ -91,9 +100,12 @@ public class Optimizer {
         }
     }
 
-    private Sem.Elem OptimizeElement(Sem.Elem element) => element switch {
-        _ => element
-    };
+    private List<Sem.Elem> TryOptimizeArithmetic(List<Sem.Elem> ast) => ast.Map(elem =>
+        elem switch {
+            Sem.FunApp funApp => TryOptimizeArithmetic(funApp) ?? funApp,
+            var other => other
+        }
+    ).ToList();
 
     private Sem.Expr? TryOptimizeArithmetic(Sem.FunApp funApp) => funApp switch {
         Sem.FunApp(Sem.Identifier op, [Sem.Integer i1, Sem.Integer i2])
@@ -151,14 +163,22 @@ public class Optimizer {
         return elements.Map(Inline).ToList();
 
         Sem.Elem Inline(Sem.Elem elem) => elem switch {
-            Sem.Setq setq => setq with { body = InlineExpr(setq.body) },
+            Sem.Fun  func => func with { body = InlineExpr(func.body) },
             Sem.Expr expr => InlineExpr(expr),
             _ => elem,
         };
 
         Sem.Expr InlineExpr(Sem.Expr expr) => expr switch {
-            Sem.Prog prog => prog with { body = InlineFunctions(prog.body), last = InlineExpr(prog.last) },
+            Sem.Setq setq => setq with { body = InlineExpr(setq.body) },
+            Sem.Prog prog => prog with {
+                body = InlineFunctions(prog.body),
+                last = InlineExpr(prog.last)
+            },
             Sem.FunApp funApp when TryInlineFunctionCall(funApp) is { } inlined => inlined,
+            Sem.FunApp funApp => funApp with {
+                fun = InlineExpr(funApp.fun),
+                args = funApp.args.Map(InlineExpr).ToList()
+            },
             _ => expr,
         };
     }
@@ -174,34 +194,46 @@ public class Optimizer {
         _ => null,
     };
 
-    private Sem.Expr BetaReduce(
+    // TODO if any name from passedArgs is mentioned in body (excliding ones that are in passedArgs), then reject
+    private Sem.Expr? BetaReduce(
         List<Sem.Expr> passedArgs,
         List<Sem.Identifier> expectedArgs,
         Sem.Expr body
     ) => ReplaceParameters(
         body,
-        paramMap: expectedArgs.Zip(passedArgs).ToDictionary()
+        paramMap: expectedArgs.Map(a => a.identifier.identifier.value).Zip(passedArgs).ToDictionary()
     );
 
-    private Sem.Expr ReplaceParameters(
+    private Sem.Expr? ReplaceParameters(
         Sem.Expr body,
-        Dictionary<Sem.Identifier, Sem.Expr> paramMap
-    ) => body switch {
-        Sem.Identifier ident when paramMap.TryGetValue(ident, out var param) => param,
-        Sem.FunApp(var fun, var args) => new Sem.FunApp(
-            ReplaceParameters(fun, paramMap),
-            args.Map(a => ReplaceParameters(a, paramMap)).ToList()
-        ),
-        Sem.Cond(var cond, var t, var f) => new Sem.Cond(
-            ReplaceParameters(cond, paramMap),
-            ReplaceParameters(t   , paramMap),
-            f is {} ff ? ReplaceParameters(ff, paramMap) : null
-        ),
-        Sem.While(var cond, var whileBody) => new Sem.While(
-            ReplaceParameters(cond,      paramMap),
-            ReplaceParameters(whileBody, paramMap)
-        ),
-        Sem.Return(var value) => new Sem.Return( ReplaceParameters(value, paramMap)),
-        _ => body
-    };
+        Dictionary<string, Sem.Expr> paramMap
+    ) {
+        return Go(body);
+
+        Sem.Expr? Go(Sem.Expr body) => body switch {
+            Sem.Identifier ident when paramMap.TryGetValue(ident.identifier.identifier.value, out var param) => param,
+            Sem.Setq setq => Go(setq.body) is {} sbody
+                ? setq with { body = sbody }
+                : null,
+            Sem.Lambda lambda => Go(lambda.body) is {} sbody
+                ? lambda with { body = sbody }
+                : null,
+            Sem.Prog prog => null,
+            Sem.Cond(var cond, var t, var f) => Go(cond) is {} scode && Go(t) is {} st
+              ? new Sem.Cond(scode, st, f is {} ff ? Go(ff) : null)
+              : null,
+            Sem.While(var cond, var whileBody) => Go(cond) is {} scode && Go(whileBody) is {} sbody
+                ? new Sem.While(scode, sbody)
+                : null,
+            Sem.Return(var value) => Go(value) is {} svalue
+                ? new Sem.Return(svalue)
+                : null,
+            Sem.FunApp(var fun, var args) => Go(fun) is {} sfun
+                                          && args.Map(Go).ToList() is var sargs
+                                          && sargs.All(a => a is not null)
+                ? new Sem.FunApp(sfun, sargs!)
+                : null,
+            _ => body
+        };
+    }
 }
