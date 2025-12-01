@@ -18,7 +18,8 @@
 (func const (x)
   (lambda (_) x))
 
-(setq null? ((curry equal) '()))
+;; (setq null? ((curry equal) '()))
+(func null? (x) (equal '() x))
 
 (func map (f lst)
   (cond (null? lst)

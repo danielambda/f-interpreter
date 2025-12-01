@@ -5,7 +5,21 @@ using static FCompiler.Lexer.Token.Punctuation.Type;
 
 namespace FCompiler.Parser;
 
-public record ParserError(string message, Span span);
+public abstract record ParserError {
+    public record ExpectedRParen(Span span): ParserError {
+        public override string ToString() =>
+            $"Expected ')' at {span.PrettyPrint()}";
+    }
+
+    public record UnexpectedRParen(Span span): ParserError {
+        public override string ToString() =>
+            $"Unexpected ')' at {span.PrettyPrint()}";
+    }
+
+    public record NoTokens : ParserError {
+        public static NoTokens Instance { get; } = new NoTokens();
+    }
+}
 
 public class Parser {
     private readonly IEnumerator<Token> _tokenEnumerator;
@@ -15,12 +29,15 @@ public class Parser {
           ? _tokenEnumerator.Current
           : null;
 
-    public Parser(IEnumerable<Token> tokens) {
+    public static Either<ParserError, Ast> Parse(IEnumerable<Token> tokens) =>
+        new Parser(tokens).ParseProgram();
+
+    private Parser(IEnumerable<Token> tokens) {
         _tokenEnumerator = tokens.GetEnumerator();
         Advance();
     }
 
-    public Either<ParserError, Ast> ParseProgram() {
+    private Either<ParserError, Ast> ParseProgram() {
         List<Element> elements = [];
         ParserError? error = null;
         while (_current is not null && error is null) {
@@ -35,11 +52,11 @@ public class Parser {
             : new Ast(elements);
     }
 
-    public Either<ParserError, Element> ParseElement() {
+    private Either<ParserError, Element> ParseElement() {
         var prev = _current;
         Advance();
         return prev switch {
-            Token.Punctuation{ type: RParen, span: var span } => new ParserError($"Unexpected )", span),
+            Token.Punctuation{ type: RParen, span: var span } => new ParserError.UnexpectedRParen(span),
             Token.Punctuation{ type: LParen, span: var span } => ParseList(span).Map(a => (Element)(new Element.List(a))),
             Token.Punctuation{ type: QuoteOp } => ParseElement().Map(a => (Element)(new Element.Quote(a))),
             Token.Identifier a  => new Element.Identifier(a),
@@ -48,11 +65,12 @@ public class Parser {
             Token.Integer a     => new Element.Integer(a),
             Token.Real a        => new Element.Real(a),
             Token.Bool a        => new Element.Bool(a),
-            null or _ => throw new InvalidProgramException("unreachable")
+            null                => ParserError.NoTokens.Instance,
+            _ => throw new InvalidProgramException("unreachable")
         };
     }
 
-    public Either<ParserError, List<Element>> ParseList(Span LParenspan) {
+    private Either<ParserError, List<Element>> ParseList(Span LParenspan) {
         List<Element> elements = [];
         ParserError? error = null;
         while (_current is not null && error is null) {
@@ -69,6 +87,6 @@ public class Parser {
         if (error is not null) {
             return error;
         }
-        return new ParserError($"Expected )", LParenspan);
+        return new ParserError.ExpectedRParen(LParenspan);
     }
 }

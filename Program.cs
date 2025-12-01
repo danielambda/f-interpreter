@@ -1,192 +1,145 @@
-﻿using FCompiler.Lexer;
+﻿using FCompiler.Interpreter;
+using FCompiler.Lexer;
 using FCompiler.Parser;
+using FCompiler.Printing;
 using FCompiler.Semantic;
-using FCompiler.Interpreter;
+using FCompiler;
 using LanguageExt;
+using static LanguageExt.Prelude;
 
-if (args is ["-i"]) {
-    Console.WriteLine("Running in interactive mode");
+CliOptions.Parse(args).Match(
+    Left: errs => {
+        Console.WriteLine("Could not parse CLI args");
+        errs.ForEach(Console.WriteLine);
+    },
+    Right: opts => {
+        try {
+            opts.Match(
+                Left: RunInterpret,
+                Right: RunRepl
+            );
+        } catch (Exception exception) {
+            Console.WriteLine(exception.Message);
+        }
+    }
+);
+
+void RunRepl(ReplOpts opts) {
     var interpreter = new Interpreter();
 
+    foreach (var file in opts.Filenames) LoadFile(file);
+
     List<string> lines = [];
+    Console.Write(">>> ");
     var line = Console.ReadLine();
 
     while (true) {
-        if (line is null) continue;
-        line = line.TrimStart();
+        try {
+            if (line is null) continue;
+            line = line.TrimStart();
 
-        if (string.IsNullOrWhiteSpace(line)) {
-            var results = Interpret(interpreter, lines);
+            if (lines.All(string.IsNullOrWhiteSpace) && line.StartsWith(":load")) {
+                var fileToLoad = line[5..].Trim();
+                LoadFile(fileToLoad);
+            } else {
+                lines.Add(line);
+                var tokens = Lexer.Lex(lines).Sequence();
+                var ast = tokens.Match(
+                    Left: error => throw new Exception($"Lexer error: {error}"),
+                    Right: Parser.Parse
+                );
+
+                var semAstM = ast.Match(
+                    Left: error => {
+                        if (error is not (ParserError.ExpectedRParen or ParserError.NoTokens)) {
+                            throw new Exception($"Parser error: {error}");
+                        }
+                    },
+                    Right: parsedAst => {
+                        var semAst = Analyzer.Analyze(parsedAst);
+                        var resultValues = semAst.Match(
+                            Left: error => throw new Exception($"Semantic error: {error.message}"),
+                            Right: interpreter.Interpret
+                        );
+
+                        var results = resultValues.Map(LispPrinter.FormatValue).Where(v => v is not null);
+                        foreach (var res in results) {
+                            Console.WriteLine(res);
+                        }
+                        lines.Clear();
+                    }
+                );
+            }
+
+            Console.Write(">>> ");
+            line = Console.ReadLine();
+        } catch (Exception exception) {
+            Console.WriteLine(exception.Message);
             lines.Clear();
+            Console.Write(">>> ");
+            line = Console.ReadLine();
+        }
+    }
 
-            foreach (var res in results.Where(r => r is not null))
-                Console.WriteLine(res);
-        } else if (lines.All(string.IsNullOrWhiteSpace) && line.StartsWith(":load")) {
-            var fileToLoad = line[5..].Trim();
-            Console.WriteLine("loading file " + fileToLoad);
+    void LoadFile(string fileToLoad) {
+        Console.WriteLine("loading file " + fileToLoad);
+        try {
             var fileContents = File.ReadLines(fileToLoad);
 
-            var results = Interpret(interpreter, lines);
+            var resultsE =
+                from tokens in Lexer.Lex(fileContents).Sequence()
+                    .MapLeft(e => WrapInException("Lexer",    e))
+                from ast    in Parser.Parse(tokens)
+                    .MapLeft(e => WrapInException("Parser",   e))
+                from semAst in Analyzer.Analyze(ast)
+                    .MapLeft(e => WrapInException("Analyzer", e))
+                select interpreter.Interpret(semAst).Map(LispPrinter.FormatValue);
 
-            foreach (var res in results.Where(r => r is not null))
+            var results = resultsE.Match(
+                Left: expetion => throw expetion,
+                Right: results => results
+            );
+
+            foreach (var res in results.Where(r => r is not null)) {
                 Console.WriteLine(res);
-        } else {
-            lines.Add(line);
+            }
+        } catch (Exception expeption) {
+            Console.WriteLine($"Error while loading file {fileToLoad}");
+            Console.WriteLine(expeption.Message);
         }
-
-        line = Console.ReadLine();
+        Console.WriteLine();
     }
 }
 
-if (args is ["-f", var filePath]) {
-    var lines = File.ReadLines(filePath);
+void RunInterpret(InterpretOpts opts) {
+    var lines = File.ReadLines(opts.Filename);
 
     try {
         var interpreter = new Interpreter();
 
-        var results = Interpret(interpreter, lines);
-
-        foreach (var res in results.Where(r => r is not null))
-            Console.WriteLine(res);
-    } catch (Exception e) {
-        Console.WriteLine($"Error: {e.Message}");
-    }
-
-    Console.WriteLine();
-    return;
-}
-
-var examples = new[] {
-    new {
-        Name = "Example 1",
-        Code = """
-        (quote (plus 1 2))
-        """
-    },
-    new {
-        Name = "Example 2",
-        Code = """
-        (setq x 10)
-        (eval 'x)
-        """
-    },
-    new {
-        Name = "Example 3",
-        Code = """
-        (func sqrtNewton (x tol)
-            (prog (guess)
-                (setq guess (divide x 2.0))
-                (while true (prog (newGuess)
-                    (setq newGuess (divide (plus guess (divide x guess)) 2.0))
-                        (cond (less (abs (minus newGuess guess)) tol)
-                            (return newGuess)
-                            (setq guess newGuess))))))
-
-        (sqrtNewton 2 0.001)
-        """
-    },
-    new {
-        Name = "Example 4",
-        Code = """
-        '()
-
-        (func map (f lst)
-          (cond (equal lst '())
-            '()
-            (cons (f (head lst)) (map f (tail lst)))))
-
-        (func id (x) x)
-
-        (func curry (f)
-          (lambda (x) (lambda (y) (f x y))))
-
-        (setq curriedMap (curry map))
-
-        (map ((curry plus) 2) '(1 2 3 -2))
-        """
-    },
-};
-
-foreach (var example in examples) {
-    var interpreter = new Interpreter();
-
-    Console.WriteLine($"{example.Name}");
-    Console.WriteLine("Code:");
-    Console.WriteLine(example.Code);
-    Console.WriteLine("Result:");
-
-    try {
-        var tokens = Lexer.Lex(example.Code.Split('\n')).Sequence();
+        var tokens = Lexer.Lex(lines).Sequence();
         var ast = tokens.Match(
-            Left: a => throw new Exception($"Lexer error: {a}"),
-            Right: ts => new Parser(ts).ParseProgram()
+            Left: error => throw new Exception($"Lexer error: {error}"),
+            Right: Parser.Parse
         );
 
         var semAst = ast.Match(
-            Left: a => throw new Exception($"Parser error: {a}"),
-            Right: parsedAst => Analyzer.Analyze(parsedAst)
+            Left: error => throw new Exception($"Parser error: {error}"),
+            Right: Analyzer.Analyze
         );
 
-        var results = semAst.Match(
-            Left: error => [$"Semantic error: {error.message}"],
-            Right: semAst => interpreter.Interpret(semAst).Select(PrettyPrint)
+        var resultValues = semAst.Match(
+            Left: error => throw new Exception($"Semantic error: {error.message}"),
+            Right: interpreter.Interpret
         );
 
-        foreach (var res in results)
+        var results = resultValues.Map(LispPrinter.FormatValue).Where(v => v is not null);
+        foreach (var res in results) {
             Console.WriteLine(res);
+        }
     } catch (Exception e) {
         Console.WriteLine($"Error: {e.Message}");
     }
-
-    Console.WriteLine();
 }
 
-string PrettyPrint(Value value) => value switch {
-    Value.Atom a    => $"Atom: {a.Name}",
-    Value.Integer i => $"Integer: {i.Value}",
-    Value.Real r    => $"Real: {r.Value}",
-    Value.Bool b    => $"Bool: {b.Value}",
-    Value.Null      => "Null",
-    Value.List list => $"List: {string.Join(separator: ' ', list.Values.Select(PrettyPrint))}",
-    Value.Function func => $"Function with params: ({string.Join(' ', func.Parameters)})",
-    Value.BuiltinFunction builtin => $"Builtin: {builtin.Name}",
-    _ => $"Unknown: {value.GetType().Name}",
-};
-
-string? LispPrint(Value value) => value switch {
-    Value.Atom a    => "'" + a.Name,
-    Value.Integer i => i.Value.ToString(),
-    Value.Real r    => r.Value.ToString(),
-    Value.Bool b    => b.Value.ToString().ToLower(),
-    Value.Null      => "null",
-    Value.List list => $"'({string.Join(separator: ' ', list.Values.Select(InListLispPrint))})",
-    Value.Function func => null,
-    Value.BuiltinFunction builtin => null,
-    _ => $"Unknown: {value.GetType().Name}",
-};
-
-string? InListLispPrint(Value value) => value switch {
-    Value.List list => $"({string.Join(separator: ' ', list.Values.Select(InListLispPrint))})",
-    Value.Atom a    => a.Name,
-    _ => LispPrint(value),
-};
-
-IEnumerable<string> Interpret(Interpreter interpreter, IEnumerable<string> lines) {
-    var tokens = Lexer.Lex(lines).Sequence();
-    var ast = tokens.Match(
-        Left: a => throw new Exception($"Lexer error: {a}"),
-        Right: ts => new Parser(ts).ParseProgram()
-    );
-
-    var semAst = ast.Match(
-        Left: a => throw new Exception($"Parser error: {a}"),
-        Right: parsedAst => Analyzer.Analyze(parsedAst)
-    );
-
-    var results = semAst.Match(
-        Left: error => [$"Semantic error: {error.message}"],
-        Right: semAst => interpreter.Interpret(semAst).Select(LispPrint)
-    );
-
-    return results.Where(r => r is not null)!;
-}
+Exception WrapInException<T>(string component, T t) => new Exception($"{component} error: {t}");

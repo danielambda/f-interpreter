@@ -40,8 +40,12 @@ public class Analyzer {
 
     private Either<Error, Sem.Elem> AnalyzeElement(Element element) => element switch {
         Element.List list => AnalyzeList(list),
-        Element.Quote quote => new Sem.Quote(quote),
-        Element.Identifier ident => new Error("unexpected identifier"),
+        Element.Quote quote      => new Sem.Quote(quote),
+        Element.Identifier ident => new Sem.Identifier(ident),
+        Element.Integer integer  => new Sem.Integer(integer),
+        Element.Real real        => new Sem.Real(real),
+        Element.Null @null       => new Sem.Null(@null),
+        Element.Bool @bool       => new Sem.Bool(@bool),
         _ => new Error($"unexpected {element.GetType().ToString()}")
     };
 

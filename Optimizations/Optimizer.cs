@@ -178,11 +178,10 @@ public class Optimizer {
         List<Sem.Expr> passedArgs,
         List<Sem.Identifier> expectedArgs,
         Sem.Expr body
-    ) {
-        // TODO handle names collision
-        var paramMap = expectedArgs.Zip(passedArgs).ToDictionary();
-        return ReplaceParameters(body, paramMap);
-    }
+    ) => ReplaceParameters(
+        body,
+        paramMap: expectedArgs.Zip(passedArgs).ToDictionary()
+    );
 
     private Sem.Expr ReplaceParameters(
         Sem.Expr body,
