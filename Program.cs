@@ -8,6 +8,8 @@ using FCompiler;
 using LanguageExt;
 using static LanguageExt.Prelude;
 
+ReadLine.HistoryEnabled = true;
+
 CliOptions.Parse(args).Match(
     Left: errs => {
         Console.WriteLine("Could not parse CLI args");
@@ -48,13 +50,13 @@ void RunInterpret(InterpretOpts opts) {
             Right: sa => sa
         );
     } catch (Exception e) {
-        Console.WriteLine($"Error: {e.Message}");
+        Console.WriteLine($"Error while including files: {e.Message}");
     }
 
     try {
         var tokens = Lexer.Lex(lines).Sequence();
         var ast = tokens.Match(
-            Left: error => throw new Exception($"Lexer error: {error}"),
+            Left: error => throw new Exception($"Lexer error: {error.message}"),
             Right: Parser.Parse
         );
 
@@ -98,8 +100,7 @@ void RunRepl(ReplOpts opts) {
     foreach (var file in opts.Filenames) LoadFile(file);
 
     List<string> lines = [];
-    Console.Write(">>> ");
-    var line = Console.ReadLine();
+    var line = ReadLine.Read("> ");
 
     while (true) {
         try {
@@ -140,13 +141,11 @@ void RunRepl(ReplOpts opts) {
                 );
             }
 
-            Console.Write(">>> ");
-            line = Console.ReadLine();
+            line = ReadLine.Read("> ");
         } catch (Exception exception) {
             Console.WriteLine(exception.Message);
             lines.Clear();
-            Console.Write(">>> ");
-            line = Console.ReadLine();
+            line = ReadLine.Read("> ");
         }
     }
 

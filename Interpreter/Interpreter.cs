@@ -267,6 +267,15 @@ public class Interpreter {
                 }
         );
 
+        AddBuiltinFunctionToGlobalEnv("sqrt", args =>
+            args is not [var x]
+                ? throw new Exception($"sqrt expects 1 arguments, got {args.Count}")
+                : x switch {
+                    Integer a => new Real(Math.Sqrt(a.Value)),
+                    Real a    => new Real(Math.Sqrt(a.Value)),
+                    _ => throw new Exception("sqrt requires one numeric argument")
+                }
+        );
 
         AddBuiltinFunctionToGlobalEnv("head", args =>
             args is not [var x]

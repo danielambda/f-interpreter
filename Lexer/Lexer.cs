@@ -82,7 +82,7 @@ public class Lexer {
                 continue;
             }
 
-            if (char.IsDigit(Current) || ((Current == '+' || Current == '-') && char.IsDigit(Peek))) {
+            if (char.IsDigit(Current) || ((Current is '+' or '-') && char.IsDigit(Peek))) {
                 yield return LexNumber();
                 continue;
             }
@@ -96,7 +96,7 @@ public class Lexer {
         var idBuilder = new StringBuilder();
         while (  char.IsLetter(Current)
               || char.IsDigit(Current)
-              || Current is '_' or '-' or '!' or '?') {
+              || Current is '_' or '-' or '!' or '?' or '>' or '<') {
             idBuilder.Append(Current);
             Advance();
         }

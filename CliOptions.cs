@@ -24,7 +24,7 @@ public class InterpretOpts {
 
 [Verb("repl", HelpText = "Launch interactive REPL")]
 public class ReplOpts {
-    [Option("files", Separator = ' ',
+    [Option("load", Separator = ' ',
         HelpText = "Files to evaluate before entering the REPL.")]
     public IEnumerable<string> Filenames { get; init; } = [];
 }
