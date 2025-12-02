@@ -51,11 +51,13 @@
 (func flat (lst)
   (foldl append '() lst))
 
-(func flatMap (f)
+(func flat-map (f)
   (compose flat ((curry map) f)))
 
-(func reverse (lst) 
-  ((list! 
-    '() 
+(func reverse (lst)
+  ((list!
+    '()
     (lambda (x xs) (append (reverse xs) (singleton x)))
   ) lst))
+
+(func singleton (x) (cons x '()))

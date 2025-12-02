@@ -1,5 +1,6 @@
 ;; requires prelude.lisp
 ;; requires list.lisp
+;; requires pair.lisp
 
 (func mk-gen (seed)
   (pair 'gen seed))
@@ -179,7 +180,6 @@
     (cons ((curry times) m)
     '()))))))))
 
-;; 1.5.5
 (func functor-law-2 (map)
   (prog ()
     (setq g

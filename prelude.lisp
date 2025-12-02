@@ -12,12 +12,6 @@
 (func const (x)
   (lambda (_) x))
 
-(func singleton (x) (cons x '()))
-
-(func pair (x y) (cons x (singleton y)))
-(setq fst head)
-(setq snd (compose head tail))
-
 (func even? (n) (equal 0 (modulo n 2)))
 (setq odd? (compose not even?))
 
