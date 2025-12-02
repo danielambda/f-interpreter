@@ -13,6 +13,10 @@ public class InterpretOpts {
         HelpText = "Disable optimizations")]
     public bool DisableOptimizations { get; init; } = false;
 
+    [Option("include", Separator = ' ',
+        HelpText = "Files to evaluate before main file interpretation.")]
+    public IEnumerable<string> FilenamesToInclude { get; init; } = [];
+
     [Value(0, MetaName = "filename", Required = true,
         HelpText = "The source file to execute.")]
     public required string Filename { get; init; }

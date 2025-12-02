@@ -26,11 +26,32 @@ CliOptions.Parse(args).Match(
 );
 
 void RunInterpret(InterpretOpts opts) {
+    var interpreter = new Interpreter();
+
     var lines = File.ReadLines(opts.Filename);
 
-    try {
-        var interpreter = new Interpreter();
+    Sem.Ast? includeAst = null;
+    if (opts.FilenamesToInclude.Any()) try {
+        var includeLines = opts.FilenamesToInclude.SelectMany(File.ReadLines);
+        var tokens = Lexer.Lex(includeLines).Sequence();
+        var ast = tokens.Match(
+            Left: error => throw new Exception($"Lexer error: {error}"),
+            Right: Parser.Parse
+        );
 
+        var semAst = ast.Match(
+            Left: error => throw new Exception($"Parser error: {error}"),
+            Right: Analyzer.Analyze
+        );
+        includeAst = semAst.Match(
+            Left: error => throw new Exception($"Semantic error: {error.message}"),
+            Right: sa => sa
+        );
+    } catch (Exception e) {
+        Console.WriteLine($"Error: {e.Message}");
+    }
+
+    try {
         var tokens = Lexer.Lex(lines).Sequence();
         var ast = tokens.Match(
             Left: error => throw new Exception($"Lexer error: {error}"),
@@ -41,6 +62,10 @@ void RunInterpret(InterpretOpts opts) {
             Left: error => throw new Exception($"Parser error: {error}"),
             Right: Analyzer.Analyze
         );
+
+        if (includeAst is { elements: var includeElements }) {
+            semAst = semAst.Map(a => new Sem.Ast(includeElements.AddRange(a.elements)));
+        }
 
         if (opts.DisableOptimizations is false) {
             semAst = semAst.Map(Optimizer.Optimize);

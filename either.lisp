@@ -1,19 +1,4 @@
-(func compose (f g)
-  (lambda (x) (f (g x))))
-
-(func curry (f)
-  (lambda (x) (lambda (y) (f x y))))
-
-(func id (x) x)
-
-(func const (x)
-  (lambda (_) x))
-
-(func singleton (x) (cons x '()))
-
-(func pair (x y) (cons x (singleton y)))
-(setq fst head)
-(setq snd (compose head tail))
+;; requires prelude.lisp
 
 (func left  (x) (pair 'left  x))
 (func right (x) (pair 'right x))

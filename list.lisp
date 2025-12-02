@@ -1,25 +1,12 @@
+;; requires prelude.lisp
+
 (func list! (on-nil on-cons)
   (lambda (lst)
     (cond (null? lst)
       on-nil
       (on-cons (head lst) (tail lst)))))
 
-(func curry (f)
-  (lambda (x) (lambda (y) (f x y))))
-
-(func uncurry (f)
-  (lambda (x y) ((f x) y)))
-
-(func compose (f g)
-  (lambda (x) (f (g x))))
-
-(func id (x) x)
-
-(func const (x)
-  (lambda (_) x))
-
-;; (setq null? ((curry equal) '()))
-(func null? (x) (equal '() x))
+(setq null? ((curry equal) '()))
 
 (func map (f lst)
   (cond (null? lst)
