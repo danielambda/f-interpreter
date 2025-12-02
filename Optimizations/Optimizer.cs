@@ -6,7 +6,7 @@ using System.Collections.Immutable;
 
 namespace FCompiler.Optimizations;
 
-public record FunInfo(List<Sem.Identifier> args, Sem.Expr body);
+public record FunInfo(ImmutableList<Sem.Identifier> args, Sem.Expr body);
 
 public class Optimizer {
     public static Sem.Ast Optimize(Sem.Ast ast) =>
@@ -49,7 +49,7 @@ public class Optimizer {
         return new Sem.Ast(optimizedElements);
     }
 
-    private void CollectFunctionDefinitions(List<Sem.Elem> elements) {
+    private void CollectFunctionDefinitions(ImmutableList<Sem.Elem> elements) {
         foreach (var element in elements) {
             if (element is Sem.Fun(var funcName, var paramList, var body)) {
                 _functions[funcName.identifier.identifier.value] = new FunInfo(paramList, body);
@@ -100,12 +100,13 @@ public class Optimizer {
         }
     }
 
-    private List<Sem.Elem> TryOptimizeArithmetic(List<Sem.Elem> ast) => ast.Map(elem =>
-        elem switch {
-            Sem.FunApp funApp => TryOptimizeArithmetic(funApp) ?? funApp,
-            var other => other
-        }
-    ).ToList();
+    private ImmutableList<Sem.Elem> TryOptimizeArithmetic(ImmutableList<Sem.Elem> ast) =>
+        ast.Map(elem =>
+            elem switch {
+                Sem.FunApp funApp => TryOptimizeArithmetic(funApp) ?? funApp,
+                var other => other
+            }
+        ).ToImmutableList();
 
     private Sem.Expr? TryOptimizeArithmetic(Sem.FunApp funApp) => funApp switch {
         Sem.FunApp(Sem.Identifier op, [Sem.Integer i1, Sem.Integer i2])
@@ -139,7 +140,7 @@ public class Optimizer {
         _ => null
     };
 
-    private List<Sem.Elem> RemoveUnusedDecls(List<Sem.Elem> elements) {
+    private ImmutableList<Sem.Elem> RemoveUnusedDecls(ImmutableList<Sem.Elem> elements) {
         var result = new List<Sem.Elem>();
 
         foreach (var element in elements) {
@@ -156,13 +157,13 @@ public class Optimizer {
             }
         }
 
-        return result;
+        return result.ToImmutableList();
     }
 
-    private List<Sem.Elem> InlineFunctions(List<Sem.Elem> elements) {
-        return elements.Map(Inline).ToList();
+    private ImmutableList<Sem.Elem> InlineFunctions(ImmutableList<Sem.Elem> elements) {
+        return elements.Map(InlineElem).ToImmutableList();
 
-        Sem.Elem Inline(Sem.Elem elem) => elem switch {
+        Sem.Elem InlineElem(Sem.Elem elem) => elem switch {
             Sem.Fun  func => func with { body = InlineExpr(func.body) },
             Sem.Expr expr => InlineExpr(expr),
             _ => elem,
@@ -170,20 +171,30 @@ public class Optimizer {
 
         Sem.Expr InlineExpr(Sem.Expr expr) => expr switch {
             Sem.Setq setq => setq with { body = InlineExpr(setq.body) },
+            Sem.Lambda lambda => lambda with { body = InlineExpr(lambda.body) },
             Sem.Prog prog => prog with {
-                body = InlineFunctions(prog.body),
+                body = prog.body.Map(InlineElem).ToImmutableList(),
                 last = InlineExpr(prog.last)
             },
-            Sem.FunApp funApp when TryInlineFunctionCall(funApp) is { } inlined => inlined,
-            Sem.FunApp funApp => funApp with {
-                fun = InlineExpr(funApp.fun),
-                args = funApp.args.Map(InlineExpr).ToList()
-            },
-            _ => expr,
+            Sem.Cond(var cond, var t, var f) => new Sem.Cond(
+                InlineExpr(cond),
+                InlineExpr(t),
+                f is {} ff ? InlineExpr(ff) : null
+            ),
+            Sem.While(var cond, var body) => new Sem.While(
+                InlineExpr(cond),
+                InlineExpr(body)
+            ),
+            Sem.FunApp funApp when TryInlineFunApp(funApp) is {} inlined => inlined,
+            Sem.FunApp(var fun, var args) => new Sem.FunApp(
+                InlineExpr(fun),
+                args.Map(InlineExpr).ToImmutableList()
+            ),
+            var other => other,
         };
     }
 
-    private Sem.Expr? TryInlineFunctionCall(Sem.FunApp funApp) => funApp switch {
+    private Sem.Expr? TryInlineFunApp(Sem.FunApp funApp) => funApp switch {
         Sem.FunApp(Sem.Identifier ident, var args)
             when _functions.TryGetValue(ident.identifier.identifier.value, out var func)
               && args.Count == func.args.Count
@@ -194,15 +205,39 @@ public class Optimizer {
         _ => null,
     };
 
-    // TODO if any name from passedArgs is mentioned in body (excliding ones that are in passedArgs), then reject
     private Sem.Expr? BetaReduce(
-        List<Sem.Expr> passedArgs,
-        List<Sem.Identifier> expectedArgs,
+        ImmutableList<Sem.Expr> passedArgs,
+        ImmutableList<Sem.Identifier> expectedArgs,
         Sem.Expr body
-    ) => ReplaceParameters(
-        body,
-        paramMap: expectedArgs.Map(a => a.identifier.identifier.value).Zip(passedArgs).ToDictionary()
-    );
+    ) => CanInline(passedArgs, expectedArgs, body)
+        ? ReplaceParameters(
+            body,
+            paramMap: expectedArgs.Map(a => a.identifier.identifier.value).Zip(passedArgs).ToDictionary()
+        )
+        : null;
+
+    private bool CanInline(
+        ImmutableList<Sem.Expr> passedArgs,
+        ImmutableList<Sem.Identifier> expectedArgs,
+        Sem.Expr body
+    ) {
+        var collisingIdentifiers = IdentifiersIn(body)
+            .Except(expectedArgs.Map(a => a.identifier.identifier.value))
+            .ToHashSet();
+        return !passedArgs.Any(arg => IdentifiersIn(arg).Any(collisingIdentifiers.Contains));
+    }
+
+    private ImmutableList<string> IdentifiersIn(Sem.Expr expr) => expr switch {
+        Sem.Setq(var name, var body) => IdentifiersIn(name).AddRange(IdentifiersIn(body)),
+        Sem.Lambda(var args, var body) => args.Bind(IdentifiersIn).ToImmutableList().AddRange(IdentifiersIn(body)),
+        Sem.Prog(var vars, var _body, var last) => vars.Bind(IdentifiersIn).ToImmutableList().AddRange(IdentifiersIn(last)),
+        Sem.Cond(var cond, var t, var f) => IdentifiersIn(cond).AddRange(IdentifiersIn(t)).AddRange(f is {} ff ? IdentifiersIn(ff) : []),
+        Sem.While(var cond, var body) => IdentifiersIn(cond).AddRange(IdentifiersIn(body)),
+        Sem.Return(var value) => IdentifiersIn(value),
+        Sem.FunApp(var fun, var args) => IdentifiersIn(fun).AddRange(args.Bind(IdentifiersIn)),
+        Sem.Identifier(var idetifier) => [idetifier.identifier.value],
+        _ => []
+    };
 
     private Sem.Expr? ReplaceParameters(
         Sem.Expr body,
@@ -229,7 +264,7 @@ public class Optimizer {
                 ? new Sem.Return(svalue)
                 : null,
             Sem.FunApp(var fun, var args) => Go(fun) is {} sfun
-                                          && args.Map(Go).ToList() is var sargs
+                                          && args.Map(Go).ToImmutableList() is var sargs
                                           && sargs.All(a => a is not null)
                 ? new Sem.FunApp(sfun, sargs!)
                 : null,

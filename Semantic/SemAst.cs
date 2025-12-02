@@ -1,6 +1,7 @@
 using FCompiler.Lexer;
 using FCompiler.Parser;
 using FCompiler.Utils;
+using System.Collections.Immutable;
 
 namespace FCompiler.Semantic;
 
@@ -8,25 +9,25 @@ public static class Sem {
     public abstract record Elem;
     public abstract record Expr : Elem;
 
-    public record Ast(List<Elem> elements);
+    public record Ast(ImmutableList<Elem> elements);
 
-    public record Setq(Identifier name, Expr body)                               : Expr;
-    public record Fun(Identifier name, List<Identifier> args, Expr body)         : Elem;
-    public record Lambda(List<Identifier> args, Expr body)                       : Expr;
-    public record Prog(List<Identifier> vars, List<Elem> body, Expr last)        : Expr;
-    public record Cond(Expr cond, Expr t, Expr? f = null)                        : Expr;
-    public record While(Expr cond, Expr body)                                    : Expr;
-    public record Return(Expr value)                                             : Expr;
-    public record Break                                                          : Elem {
+    public record Setq(Identifier name, Expr body)                                          : Expr;
+    public record Fun(Identifier name, ImmutableList<Identifier> args, Expr body) : Elem;
+    public record Lambda(ImmutableList<Identifier> args, Expr body)                         : Expr;
+    public record Prog(ImmutableList<Identifier> vars, ImmutableList<Elem> body, Expr last) : Expr;
+    public record Cond(Expr cond, Expr t, Expr? f = null)                                   : Expr;
+    public record While(Expr cond, Expr body)                                               : Expr;
+    public record Return(Expr value)                                                        : Expr;
+    public record Break                                                           : Elem {
         public static Break Default = new Break();
     }
-    public record FunApp(Expr fun, List<Expr> args)                              : Expr;
-    public record Quote(Element element)                                         : Expr;
-    public record Integer(Element.Integer integer)                               : Expr;
-    public record Real(Element.Real real)                                        : Expr;
-    public record Bool(Element.Bool boolean)                                     : Expr;
-    public record Null(Element.Null elementNull)                                 : Expr;
-    public record Identifier(Element.Identifier identifier)                      : Expr;
+    public record FunApp(Expr fun, ImmutableList<Expr> args)                                : Expr;
+    public record Quote(Element element)                                                    : Expr;
+    public record Integer(Element.Integer integer)                                          : Expr;
+    public record Real(Element.Real real)                                                   : Expr;
+    public record Bool(Element.Bool boolean)                                                : Expr;
+    public record Null(Element.Null elementNull)                                            : Expr;
+    public record Identifier(Element.Identifier identifier)                                 : Expr;
 
     public static FCompiler.Parser.Ast ToAst(this Ast semAst) =>
         new FCompiler.Parser.Ast(semAst.elements.Map(ToElement).ToList());

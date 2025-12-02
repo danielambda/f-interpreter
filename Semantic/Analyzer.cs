@@ -2,6 +2,7 @@ using static FCompiler.Lexer.Token.SpecialForm.Type;
 using FCompiler.Parser;
 using FCompiler.Utils;
 using LanguageExt;
+using System.Collections.Immutable;
 
 namespace FCompiler.Semantic;
 
@@ -23,7 +24,7 @@ public class Analyzer {
     private Either<Error, Sem.Ast> Run(Ast ast) =>
         ast.elements
             .Sequence(AnalyzeElement)
-            .Map(elems => new Sem.Ast(elems.ToList()));
+            .Map(elems => new Sem.Ast(elems.ToImmutableList()));
 
     private void AddBuiltinFunctions() {
         var builtins = new[] {
@@ -91,7 +92,7 @@ public class Analyzer {
     private Either<Error, Sem.FunApp> AnalyzeFunApp(Element funElem, List<Element> argElems) =>
         from fun in AnalyzeExpr(funElem)
         from args in argElems.Sequence(AnalyzeExpr)
-        select new Sem.FunApp(fun, args.ToList());
+        select new Sem.FunApp(fun, args.ToImmutableList());
 
     private Either<Error, Sem.Setq> AnalyzeSetq(List<Element> args) {
         if (args is not [Element.Identifier ident, var bodyElem]) {
@@ -133,7 +134,7 @@ public class Analyzer {
 
         var fun =
             from body in AnalyzeExpr(bodyElem)
-            select new Sem.Fun(new(ident), parameters, body);
+            select new Sem.Fun(new(ident), parameters.ToImmutableList(), body);
 
         _currentScope = oldScope;
 
@@ -161,7 +162,7 @@ public class Analyzer {
 
         var lambda =
             from body in AnalyzeExpr(bodyElem)
-            select new Sem.Lambda(identifierList, body);
+            select new Sem.Lambda(identifierList.ToImmutableList(), body);
 
         _currentScope = oldScope;
 
@@ -190,7 +191,7 @@ public class Analyzer {
         var prog =
             from body in bodyElem.Sequence(AnalyzeElement)
             from last in AnalyzeExpr(lastElem)
-            select new Sem.Prog(identifierList, body.ToList(), last);
+            select new Sem.Prog(identifierList.ToImmutableList(), body.ToImmutableList(), last);
 
         _currentScope = oldScope;
 
