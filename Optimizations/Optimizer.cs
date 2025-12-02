@@ -255,7 +255,11 @@ public class Optimizer {
                 : null,
             Sem.Prog prog => null,
             Sem.Cond(var cond, var t, var f) => Go(cond) is {} scode && Go(t) is {} st
-              ? new Sem.Cond(scode, st, f is {} ff ? Go(ff) : null)
+              ? f is {} ff
+                ? Go(ff) is {} goff
+                    ? new Sem.Cond(scode, st, goff)
+                    : null
+                : new Sem.Cond(scode, st)
               : null,
             Sem.While(var cond, var whileBody) => Go(cond) is {} scode && Go(whileBody) is {} sbody
                 ? new Sem.While(scode, sbody)

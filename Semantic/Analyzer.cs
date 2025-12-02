@@ -32,7 +32,7 @@ public class Analyzer {
             "head", "tail", "cons",
             "equal", "nonequal", "less", "lesseq", "greater", "greatereq",
             "isint", "isreal", "isbool", "isnull", "isatom", "islist",
-            "and", "or", "xor", "not", "eval",
+            "and", "or", "xor", "not", "eval", "abs", "modulo"
         };
 
         foreach (var builtin in builtins)
@@ -77,14 +77,14 @@ public class Analyzer {
         Element.SpecialForm specialForm,
         List<Element> args
     ) => specialForm.specialForm.type switch {
-        Setq   => AnalyzeSetq(args).Map(s => (Sem.Elem)s),
-        Func   => AnalyzeFunc(args).Map(f => (Sem.Elem)f),
+        Setq   => AnalyzeSetq(args)  .Map(s => (Sem.Elem)s),
+        Func   => AnalyzeFunc(args)  .Map(f => (Sem.Elem)f),
         Lambda => AnalyzeLambda(args).Map(l => (Sem.Elem)l),
-        Prog   => AnalyzeProg(args).Map(p => (Sem.Elem)p),
-        Cond   => AnalyzeCond(args).Map(c => (Sem.Elem)c),
-        While  => AnalyzeWhile(args).Map(w => (Sem.Elem)w),
+        Prog   => AnalyzeProg(args)  .Map(p => (Sem.Elem)p),
+        Cond   => AnalyzeCond(args)  .Map(c => (Sem.Elem)c),
+        While  => AnalyzeWhile(args) .Map(w => (Sem.Elem)w),
         Return => AnalyzeReturn(args).Map(r => (Sem.Elem)r),
-        Break  => AnalyzeBreak(args).Map(b => (Sem.Elem)b),
+        Break  => AnalyzeBreak(args) .Map(b => (Sem.Elem)b),
         Quote  => new Sem.Quote(new Element.List(args)),
         _ => throw new ArgumentException($"Unknown specialForm type")
     };

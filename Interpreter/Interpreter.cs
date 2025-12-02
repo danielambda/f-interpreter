@@ -258,6 +258,16 @@ public class Interpreter {
                 }
         );
 
+        AddBuiltinFunctionToGlobalEnv("modulo", args =>
+            args is not [var x, var y]
+                ? throw new Exception($"divide expects 2 arguments, got {args.Count}")
+                : (x, y) switch {
+                    (Integer a, Integer b) when b.Value != 0 => new Integer(a.Value % b.Value),
+                    _ => throw new Exception("modulo requires integer arguments and non-zero divisor")
+                }
+        );
+
+
         AddBuiltinFunctionToGlobalEnv("head", args =>
             args is not [var x]
                 ? throw new Exception($"head expects 1 arguments, got {args.Count}")
