@@ -164,9 +164,9 @@ public class Interpreter {
 
     private Value EvaluateListAsCode(List list) {
         try {
-            var elements = ConvertValueToListToElements(list);
+            var listElement = new Element.List(ConvertValueToListToElements(list));
 
-            var tempAst = new Ast(elements);
+            var tempAst = new Ast([listElement]);
 
             var semAst = Analyzer.Analyze(tempAst);
             return semAst.Match(
