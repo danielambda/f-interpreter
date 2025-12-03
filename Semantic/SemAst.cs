@@ -19,7 +19,7 @@ public static class Sem {
     public record While(Expr cond, Expr body)                                               : Expr;
     public record Return(Expr value)                                                        : Expr;
     public record Break                                                           : Elem {
-        public static Break Default = new Break();
+        public static Break Instance { get; } = new Break();
     }
     public record FunApp(Expr fun, ImmutableList<Expr> args)                                : Expr;
     public record Quote(Element element)                                                    : Expr;

@@ -226,7 +226,7 @@ public class Analyzer {
     private Either<Error, Sem.Break> AnalyzeBreak(List<Element> args) =>
           args is not []                        ? new Error("break has to have exactly zero arguments")
         : !_currentScope.IsIn(Scope.Type.While) ? new Error("break can only be used inside a loop")
-        : Sem.Break.Default;
+        : Sem.Break.Instance;
 
     private Either<Error, Sem.Cond> AnalyzeCond(List<Element> args) => args switch {
         [var condElem, var tElem] =>
