@@ -101,6 +101,7 @@ void RunRepl(ReplOpts opts) {
 
     List<string> lines = [];
     var line = ReadLine.Read("> ");
+    var awaiting = false;
 
     while (true) {
         try {
@@ -120,11 +121,14 @@ void RunRepl(ReplOpts opts) {
 
                 var semAstM = ast.Match(
                     Left: error => {
-                        if (error is not (ParserError.ExpectedRParen or ParserError.NoTokens)) {
+                        if (error is ParserError.ExpectedRParen or ParserError.NoTokens) {
+                            awaiting = true;
+                        } else {
                             throw new Exception($"Parser error: {error}");
                         }
                     },
                     Right: parsedAst => {
+                        awaiting = false;
                         var semAst = Analyzer.Analyze(parsedAst);
 
                         var resultValues = semAst.Match(
@@ -141,8 +145,9 @@ void RunRepl(ReplOpts opts) {
                 );
             }
 
-            line = ReadLine.Read("> ");
+            line = ReadLine.Read(awaiting ? ">>> " : "> ");
         } catch (Exception exception) {
+            awaiting = false;
             Console.WriteLine(exception.Message);
             lines.Clear();
             line = ReadLine.Read("> ");
