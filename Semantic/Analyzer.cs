@@ -32,7 +32,7 @@ public class Analyzer {
             "head", "tail", "cons",
             "equal", "nonequal", "less", "lesseq", "greater", "greatereq",
             "isint", "isreal", "isbool", "isnull", "isatom", "islist",
-            "and", "or", "xor", "not", "eval", "abs", "modulo"
+            "and", "or", "xor", "not", "eval", "abs", "modulo", "sqrt",
         };
 
         foreach (var builtin in builtins)
